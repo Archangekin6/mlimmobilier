@@ -1,0 +1,55 @@
+name: Keep Supabase Alive
+
+# Ce workflow empêche la mise en pause automatique de Supabase FREE
+# en effectuant une requête de lecture quotidienne vers la base de données
+
+on:
+  schedule:
+    # Tous les jours à 3h00 UTC (4h00 heure ivoirienne)
+    # Cron format: minute hour day month dayOfWeek
+    - cron: '0 3 * * *'
+  
+  # Permettre le déclenchement manuel depuis l'interface GitHub
+  workflow_dispatch:
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Ping Keep-Alive Endpoint
+        run: |
+          echo "🔄 Sending keep-alive request to Supabase..."
+          
+          # Effectuer la requête vers l'endpoint keep-alive
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            ${{ secrets.SITE_URL }}/api/cron/keep-alive \
+            -H "x-cron-token: ${{ secrets.CRON_SECRET_TOKEN }}")
+          
+          # Extraire le code HTTP et le body
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "📊 HTTP Status: $http_code"
+          echo "📄 Response: $body"
+          
+          # Vérifier le succès
+          if [ "$http_code" -ne 200 ]; then
+            echo "❌ Keep-alive failed with HTTP $http_code"
+            echo "Response body: $body"
+            exit 1
+          fi
+          
+          echo "✅ Keep-alive successful - Supabase project remains active"
+      
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "⚠️ Keep-alive check failed!"
+          echo "Possible causes:"
+          echo "  1. Site is down"
+          echo "  2. Supabase project is paused (manual resume required)"
+          echo "  3. Invalid CRON_SECRET_TOKEN"
+          echo "  4. Network error"
+          echo ""
+          echo "Action required: Check https://supabase.com/dashboard"
