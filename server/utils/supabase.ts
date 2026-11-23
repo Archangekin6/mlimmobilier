@@ -25,7 +25,7 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
 /**
  * Verify Cloudflare Turnstile token
  */
-export async function verifyTurnstile(token: string, remoteIP?: string): Promise<boolean> {
+export async function verifyTurnstile(token: string): Promise<boolean> {
   const secretKey = process.env.TURNSTILE_SECRET_KEY
 
   if (!token.trim()) {
@@ -39,13 +39,19 @@ export async function verifyTurnstile(token: string, remoteIP?: string): Promise
     }
 
     console.error('Turnstile secret key is not configured in production')
-    return false
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'La vérification Turnstile n’est pas configurée sur le serveur'
+    })
   }
 
   const expectedHostname = process.env.TURNSTILE_EXPECTED_HOSTNAME?.trim().toLowerCase()
   if (process.env.NODE_ENV === 'production' && !expectedHostname) {
     console.error('Turnstile expected hostname is not configured in production')
-    return false
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Le domaine Turnstile n’est pas configuré sur le serveur'
+    })
   }
 
   const controller = new AbortController()
@@ -59,15 +65,17 @@ export async function verifyTurnstile(token: string, remoteIP?: string): Promise
       },
       body: JSON.stringify({
         secret: secretKey,
-        response: token,
-        ...(remoteIP ? { remoteip: remoteIP } : {})
+        response: token
       }),
       signal: controller.signal
     })
 
     if (!response.ok) {
       console.error(`Turnstile verification endpoint returned HTTP ${response.status}`)
-      return false
+      throw createError({
+        statusCode: 503,
+        statusMessage: 'Le service de vérification Turnstile est temporairement indisponible'
+      })
     }
 
     const data: unknown = await response.json()
@@ -85,8 +93,20 @@ export async function verifyTurnstile(token: string, remoteIP?: string): Promise
 
     return true
   } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'statusCode' in error &&
+      error.statusCode === 503
+    ) {
+      throw error
+    }
+
     console.error('Turnstile verification request failed')
-    return false
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Le service de vérification Turnstile est temporairement indisponible'
+    })
   } finally {
     clearTimeout(timeout)
   }
@@ -192,17 +212,6 @@ export async function checkRateLimit(
 }
 
 /**
- * Get client IP address from request
- */
-export function getClientIP(event: H3Event): string {
-  if (process.env.RENDER === 'true') {
-    return 'unknown'
-  }
-
-  return event.node.req.socket.remoteAddress?.trim() || 'unknown'
-}
-
-/**
  * Get user agent from request
  */
 export function getUserAgent(event: H3Event): string {
@@ -243,28 +252,4 @@ export function isValidEmail(email: string): boolean {
 export function isValidCIPhone(phone: string): boolean {
   const normalized = phone.replace(/[\s().-]/g, '')
   return /^\+?225\d{10}$/.test(normalized)
-}
-
-/**
- * Log audit event
- */
-export async function logAuditEvent(
-  action: string,
-  tableName: string,
-  recordId: string | null = null,
-  oldValues: any = null,
-  newValues: any = null
-): Promise<void> {
-  try {
-    await supabaseAdmin.rpc('log_audit_event', {
-      p_action: action,
-      p_table_name: tableName,
-      p_record_id: recordId,
-      p_old_values: oldValues,
-      p_new_values: newValues
-    })
-  } catch (error) {
-    console.error('Audit log error:', error)
-    // Don't throw - audit failures shouldn't break operations
-  }
 }

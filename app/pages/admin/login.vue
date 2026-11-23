@@ -49,7 +49,7 @@ const handleLogin = async () => {
       // Afficher l'erreur
       errorMsg.value = result.error || 'Identifiants incorrects'
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Erreur login:', err)
     errorMsg.value = 'Une erreur est survenue lors de la connexion'
   } finally {

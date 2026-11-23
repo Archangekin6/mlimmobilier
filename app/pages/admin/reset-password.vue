@@ -58,7 +58,7 @@ const handleSubmit = async () => {
     } else {
       errorMsg.value = result.error || 'Une erreur est survenue'
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Erreur update password:', err)
     errorMsg.value = 'Une erreur est survenue'
   } finally {

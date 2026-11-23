@@ -1,5 +1,11 @@
 # Guide d'Installation Supabase - ML Immobilier SARL
 
+> **Guide historique, non validé pour le schéma actuel.** Pour la configuration
+> requise en production et l'état des migrations, suivre
+> [SUPABASE_READY.md](./SUPABASE_READY.md). Vérifier l'historique Supabase avant
+> toute exécution SQL ; ne pas rejouer 001 ni 005 à l'aveugle. Les anciennes
+> instructions Turnstile et Storage de ce guide peuvent être obsolètes.
+
 ## 📋 Vue d'Ensemble
 
 Ce guide vous accompagne étape par étape dans la création et configuration d'un nouveau projet Supabase pour ML Immobilier SARL.

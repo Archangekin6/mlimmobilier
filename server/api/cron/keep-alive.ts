@@ -24,12 +24,15 @@ export default defineEventHandler(async (event) => {
       .single()
     
     if (error) {
-      console.error('Keep-alive DB check failed:', error)
-      return {
-        success: false,
-        error: error.message,
-        timestamp: new Date().toISOString()
-      }
+      console.error('Keep-alive DB check failed:', error.message)
+      throw createError({ statusCode: 503, statusMessage: 'Supabase est temporairement indisponible' })
+    }
+
+    const { data: removedRateLimits, error: cleanupError } = await supabaseAdmin
+      .rpc('cleanup_rate_limits', { p_window_hours: 168 })
+    if (cleanupError) {
+      console.error('Rate-limit cleanup failed:', cleanupError.message)
+      throw createError({ statusCode: 503, statusMessage: 'Le nettoyage anti-abus est temporairement indisponible' })
     }
     
     // Succès - le projet Supabase reste actif
@@ -38,13 +41,22 @@ export default defineEventHandler(async (event) => {
       message: 'Supabase keep-alive successful',
       company: data.company_name,
       last_update: data.updated_at,
+      removed_rate_limits: removedRateLimits,
       timestamp: new Date().toISOString()
     }
     
-  } catch (err: any) {
+  } catch (err: unknown) {
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'statusCode' in err &&
+      typeof err.statusCode === 'number'
+    ) {
+      throw err
+    }
     console.error('Keep-alive exception:', err)
     throw createError({
-      statusCode: 500,
+      statusCode: 503,
       statusMessage: 'Keep-alive check failed'
     })
   }

@@ -1,4 +1,4 @@
-import { serverSupabaseServiceRole } from '#supabase/server'
+import { supabaseAdmin } from '~~/server/utils/supabase'
 
 export default defineEventHandler(async (event) => {
   const userId = event.context.adminUser?.id
@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const supabase = serverSupabaseServiceRole(event)
+  const supabase = supabaseAdmin
   const { data, error } = await supabase
     .from('admin_profiles')
     .update({ full_name: fullName })

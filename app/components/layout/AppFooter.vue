@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useSiteData } from '~/composables/useSiteData'
 
-const { settings } = useSiteData()
+const { settings, publishedServices } = useSiteData()
 const currentYear = new Date().getFullYear()
 </script>
 
@@ -16,12 +16,12 @@ const currentYear = new Date().getFullYear()
               <UIcon name="i-heroicons-building-office-2" class="w-5 h-5 text-white" />
             </div>
             <div>
-              <span class="text-base font-black text-white tracking-wider">ML IMMOBILIER</span>
-              <span class="block text-[10px] uppercase tracking-widest text-neutral-400 font-medium">SARL • Abidjan</span>
+              <span class="text-base font-black text-white tracking-wider">{{ settings.companyName }}</span>
+              <span v-if="settings.city" class="block text-[10px] uppercase tracking-widest text-neutral-400 font-medium">{{ settings.city }}</span>
             </div>
           </div>
-          <p class="text-xs text-neutral-400 leading-relaxed">
-            Entreprise d'ingénierie et de gestion basée à Abidjan (Yopougon, Terminus 27). Interventions en BTP, électrification HTA/BTA certifiée et gestion de patrimoine.
+          <p v-if="settings.tagline" class="text-xs text-neutral-400 leading-relaxed">
+            {{ settings.tagline }}
           </p>
 
           <!-- Social Icons — Official brand hover colors -->
@@ -71,22 +71,10 @@ const currentYear = new Date().getFullYear()
             Domaines d'Intervention
           </h4>
           <ul class="space-y-2.5 text-xs">
-            <li>
-              <NuxtLink to="/services" class="hover:text-white transition-colors flex items-center gap-1.5">
+            <li v-for="service in publishedServices" :key="service.slug">
+              <NuxtLink :to="`/services#${service.slug}`" class="hover:text-white transition-colors flex items-center gap-1.5">
                 <UIcon name="i-heroicons-chevron-right" class="w-3 h-3 text-neutral-500" />
-                <span>Bâtiment & Travaux Publics (BTP)</span>
-              </NuxtLink>
-            </li>
-            <li>
-              <NuxtLink to="/services" class="hover:text-white transition-colors flex items-center gap-1.5">
-                <UIcon name="i-heroicons-chevron-right" class="w-3 h-3 text-neutral-500" />
-                <span>Électrification Haute & Basse Tension</span>
-              </NuxtLink>
-            </li>
-            <li>
-              <NuxtLink to="/services" class="hover:text-white transition-colors flex items-center gap-1.5">
-                <UIcon name="i-heroicons-chevron-right" class="w-3 h-3 text-neutral-500" />
-                <span>Gestion & Valorisation Immobilière</span>
+                <span>{{ service.homeTitle }}</span>
               </NuxtLink>
             </li>
             <li>
@@ -128,23 +116,23 @@ const currentYear = new Date().getFullYear()
             Siège & Contacts
           </h4>
           <ul class="space-y-3 text-xs text-neutral-400">
-            <li class="flex items-start gap-2.5">
+            <li v-if="settings.address || settings.city" class="flex items-start gap-2.5">
               <UIcon name="i-heroicons-map-pin" class="w-4 h-4 text-neutral-500 shrink-0 mt-0.5" />
-              <span>{{ settings.address }}, {{ settings.city }}</span>
+              <span>{{ [settings.address, settings.city].filter(Boolean).join(', ') }}</span>
             </li>
-            <li class="flex items-center gap-2.5">
+            <li v-if="settings.phone1" class="flex items-center gap-2.5">
               <UIcon name="i-heroicons-phone" class="w-4 h-4 text-neutral-500 shrink-0" />
               <a :href="`tel:${settings.phone1.replace(/\s+/g, '')}`" class="hover:text-white">
                 {{ settings.phone1 }}
               </a>
             </li>
-            <li class="flex items-center gap-2.5">
+            <li v-if="settings.email" class="flex items-center gap-2.5">
               <UIcon name="i-heroicons-envelope" class="w-4 h-4 text-neutral-500 shrink-0" />
               <a :href="`mailto:${settings.email}`" class="hover:text-white">
                 {{ settings.email }}
               </a>
             </li>
-            <li class="flex items-center gap-2.5">
+            <li v-if="settings.workingHours" class="flex items-center gap-2.5">
               <UIcon name="i-heroicons-clock" class="w-4 h-4 text-neutral-500 shrink-0" />
               <span>{{ settings.workingHours }}</span>
             </li>
@@ -160,7 +148,7 @@ const currentYear = new Date().getFullYear()
         <div class="flex items-center gap-6">
           <NuxtLink to="/mentions-legales" class="hover:text-neutral-300 transition-colors">Mentions Légales</NuxtLink>
           <NuxtLink to="/contact" class="hover:text-neutral-300 transition-colors">Contact</NuxtLink>
-          <span>Abidjan, Côte d'Ivoire</span>
+          <span v-if="settings.city">{{ settings.city }}</span>
         </div>
       </div>
     </div>

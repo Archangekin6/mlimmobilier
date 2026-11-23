@@ -1,4 +1,5 @@
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
+import type { SiteImage } from './useSiteImages'
 
 export interface Project {
   id: string
@@ -10,9 +11,12 @@ export interface Project {
   fullDescription?: string
   client?: string
   imageUrl: string
+  imageStoragePath?: string
   gallery?: string[]
+  galleryImages?: Array<{ imageUrl: string; storagePath: string }>
   published: boolean
   featured: boolean
+  displayOrder: number
 }
 
 export interface QuoteRequest {
@@ -30,6 +34,43 @@ export interface QuoteRequest {
   notes?: string
 }
 
+export interface Testimonial {
+  id: string
+  client_name: string
+  client_function: string | null
+  client_company: string | null
+  client_location: string | null
+  testimonial_text: string
+  service_type: string | null
+  rating: number | null
+  photo_url: string | null
+  testimonial_date: string | null
+  published: boolean
+  featured: boolean
+  display_order: number
+}
+
+export type ServiceSlug = 'btp' | 'electrification' | 'gestion'
+
+export interface ServiceDetailItem {
+  title: string
+  text: string
+}
+
+export interface SiteService {
+  slug: ServiceSlug
+  homeTitle: string
+  detailTitle: string
+  badge: string
+  homeDescription: string
+  homeHighlights: string[]
+  detailDescription: string
+  detailItems: ServiceDetailItem[]
+  displayOrder: number
+  published: boolean
+  icon: string
+}
+
 export interface SiteSettings {
   companyName: string
   logoUrl: string
@@ -44,294 +85,446 @@ export interface SiteSettings {
   heroTitle: string
   heroSubtitle: string
   heroCtaText: string
-  statsClients: number
-  statsProjects: number
-  statsYears: number
-  statsSatisfaction: number
+  heroSecondaryCtaText: string
+  homeDescription: string
+  statsClients: number | null
+  statsProjects: number | null
+  statsYears: number | null
+  statsSatisfaction: number | null
   socialFacebook: string
   socialLinkedin: string
   socialInstagram: string
   bannerNotice: string
   showNotice: boolean
+  aboutHeroTitle: string
+  aboutHeroSubtitle: string
+  aboutPresentationTitle: string
+  aboutPresentationText: string
+  aboutLocationText: string
+  aboutMissionTitle: string
+  aboutMissionText: string
+  aboutValuesTitle: string
+  aboutValuesSubtitle: string
+  aboutValue1Title: string
+  aboutValue1Text: string
+  aboutValue2Title: string
+  aboutValue2Text: string
+  aboutValue3Title: string
+  aboutValue3Text: string
+  aboutValue4Title: string
+  aboutValue4Text: string
+  aboutCtaTitle: string
+  aboutCtaText: string
 }
 
-// Initial realistic default settings for ML Immobilier SARL
-const defaultSettings: SiteSettings = {
+interface DatabaseProject {
+  id: string
+  title: string
+  service_type: Project['category']
+  location: string | null
+  project_date: string | null
+  summary: string | null
+  description: string | null
+  full_description: string | null
+  client_name: string | null
+  cover_image_url: string | null
+  published: boolean
+  featured: boolean
+  display_order: number
+}
+
+interface DatabaseSettings {
+  company_name: string
+  logo_url: string | null
+  tagline: string | null
+  address: string | null
+  city: string | null
+  phone1: string | null
+  phone2: string | null
+  whatsapp: string | null
+  email: string | null
+  working_hours: string | null
+  hero_title: string | null
+  hero_subtitle: string | null
+  hero_cta_text: string | null
+  hero_secondary_cta_text: string | null
+  home_description: string | null
+  stats_clients: number | null
+  stats_projects: number | null
+  stats_years: number | null
+  stats_satisfaction: number | null
+  social_facebook: string | null
+  social_linkedin: string | null
+  social_instagram: string | null
+  banner_notice: string | null
+  show_notice: boolean
+  about_hero_title: string | null
+  about_hero_subtitle: string | null
+  about_presentation_title: string | null
+  about_presentation_text: string | null
+  about_location_text: string | null
+  about_mission_title: string | null
+  about_mission_text: string | null
+  about_values_title: string | null
+  about_values_subtitle: string | null
+  about_value_1_title: string | null
+  about_value_1_text: string | null
+  about_value_2_title: string | null
+  about_value_2_text: string | null
+  about_value_3_title: string | null
+  about_value_3_text: string | null
+  about_value_4_title: string | null
+  about_value_4_text: string | null
+  about_cta_title: string | null
+  about_cta_text: string | null
+}
+
+interface DatabaseSiteService {
+  slug: ServiceSlug
+  home_title: string
+  detail_title: string
+  badge: string
+  home_description: string
+  home_highlights: unknown
+  detail_description: string
+  detail_items: unknown
+  display_order: number
+  published: boolean
+}
+
+const emptySettings: SiteSettings = {
   companyName: 'ML Immobilier SARL',
-  logoUrl: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=200&q=80',
-  tagline: 'Expert en BTP, Électrification & Gestion Immobilière à Abidjan',
-  address: 'Yopougon, Terminus 27',
-  city: 'Abidjan, Côte d’Ivoire',
-  phone1: '+225 07 08 09 10 11',
-  phone2: '+225 05 04 03 02 01',
-  whatsapp: '2250708091011',
-  email: 'contact@mlimmobilier.com',
-  workingHours: 'Lun - Ven : 08h00 - 18h00 | Sam : 09h00 - 13h00',
-  heroTitle: 'Bâtir avec rigueur, éclairer avec précision, valoriser votre patrimoine.',
-  heroSubtitle: 'ML Immobilier SARL accompagne particuliers, entreprises et institutions dans la réalisation de chantiers BTP, projets d’électrification et la gestion immobilière sécurisée à Abidjan et en Côte d’Ivoire.',
-  heroCtaText: 'Demander un devis gratuit',
-  statsClients: 120,
-  statsProjects: 85,
-  statsYears: 8,
-  statsSatisfaction: 98,
-  socialFacebook: 'https://facebook.com/mlimmobilier',
-  socialLinkedin: 'https://linkedin.com/company/mlimmobilier',
-  socialInstagram: 'https://instagram.com/mlimmobilier',
-  bannerNotice: 'Nouvelle agence à Yopougon Terminus 27 – Venez rencontrer nos experts pour votre projet.',
-  showNotice: true
+  logoUrl: '',
+  tagline: '',
+  address: '',
+  city: '',
+  phone1: '',
+  phone2: '',
+  whatsapp: '',
+  email: '',
+  workingHours: '',
+  heroTitle: '',
+  heroSubtitle: '',
+  heroCtaText: '',
+  heroSecondaryCtaText: '',
+  homeDescription: '',
+  statsClients: null,
+  statsProjects: null,
+  statsYears: null,
+  statsSatisfaction: null,
+  socialFacebook: '',
+  socialLinkedin: '',
+  socialInstagram: '',
+  bannerNotice: '',
+  showNotice: false,
+  aboutHeroTitle: '',
+  aboutHeroSubtitle: '',
+  aboutPresentationTitle: '',
+  aboutPresentationText: '',
+  aboutLocationText: '',
+  aboutMissionTitle: '',
+  aboutMissionText: '',
+  aboutValuesTitle: '',
+  aboutValuesSubtitle: '',
+  aboutValue1Title: '',
+  aboutValue1Text: '',
+  aboutValue2Title: '',
+  aboutValue2Text: '',
+  aboutValue3Title: '',
+  aboutValue3Text: '',
+  aboutValue4Title: '',
+  aboutValue4Text: '',
+  aboutCtaTitle: '',
+  aboutCtaText: ''
 }
 
-// Realistic projects in Abidjan
-const defaultProjects: Project[] = [
-  {
-    id: 'proj-1',
-    title: 'Construction Résidence R+4 Moderne',
-    category: 'btp',
-    location: 'Abidjan - Cocody Angré 8ème Tranche',
-    date: '2026',
-    description: 'Réalisation clé en main d’un immeuble d’habitation de grand standing avec sous-sol et finitions premium.',
-    fullDescription: 'Projet complet comprenant les études géotechniques, le terrassement, le gros œuvre en béton armé, les étanchéités de pointe, les menuiseries aluminium et la domotique intégrée.',
-    client: 'Société Immobilière d’Abidjan',
-    imageUrl: 'https://images.unsplash.com/photo-1541888946425-d0fbb1861593?auto=format&fit=crop&w=1000&q=80',
-    gallery: [
-      'https://images.unsplash.com/photo-1541888946425-d0fbb1861593?auto=format&fit=crop&w=1000&q=80',
-      'https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=1000&q=80',
-      'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=1000&q=80'
-    ],
-    published: true,
-    featured: true
-  },
-  {
-    id: 'proj-2',
-    title: 'Électrification HTA/BTA Lotissement Privé',
-    category: 'electrification',
-    location: 'Bingerville - Zone Résidentielle',
-    date: '2026',
-    description: 'Installation d’un poste transformateur 630 kVA et extension de réseau de distribution électrique conforme CIE.',
-    fullDescription: 'Pose de câbles souterrains, raccordement de 48 villas individuelles, éclairage public LED autonome et certification auprès des organismes nationaux de contrôle.',
-    client: 'Collectivité de Résidents',
-    imageUrl: 'https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?auto=format&fit=crop&w=1000&q=80',
-    gallery: [
-      'https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?auto=format&fit=crop&w=1000&q=80',
-      'https://images.unsplash.com/photo-1509391365360-2e959784a276?auto=format&fit=crop&w=1000&q=80'
-    ],
-    published: true,
-    featured: true
-  },
-  {
-    id: 'proj-3',
-    title: 'Gestion & Entretien Parc Locatif Résidentiel',
-    category: 'gestion',
-    location: 'Abidjan - Yopougon & Marcory',
-    date: '2025 - En cours',
-    description: 'Mandat de gestion locative, recouvrement des loyers, maintenance technique et valorisation pour un parc de 32 appartements.',
-    fullDescription: 'Sélection rigoureuse des locataires, taux de recouvrement de 99.4%, audit semestriel de l’état du bâtiment et assistance juridique propriétaire.',
-    client: 'Investisseurs Privés',
-    imageUrl: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1000&q=80',
-    gallery: [
-      'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1000&q=80',
-      'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1000&q=80'
-    ],
-    published: true,
-    featured: true
-  },
-  {
-    id: 'proj-4',
-    title: 'Rénovation Énergétique Siège d’Entreprise',
-    category: 'electrification',
-    location: 'Abidjan - Plateau',
-    date: '2025',
-    description: 'Mise en conformité des armoires électriques, onduleurs industriels et intégration de panneaux solaires en toiture.',
-    fullDescription: 'Réduction de 35% de la facture énergétique du bâtiment grâce à l’optimisation des charges et l’installation d’une gestion technique centralisée.',
-    client: 'Groupe Financier Régional',
-    imageUrl: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1000&q=80',
-    gallery: [
-      'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1000&q=80'
-    ],
-    published: true,
-    featured: false
-  },
-  {
-    id: 'proj-5',
-    title: 'Aménagement de Villa Duplex & Clôture Sécurisée',
-    category: 'btp',
-    location: 'Abidjan - Songon',
-    date: '2025',
-    description: 'Construction d’une villa moderne de 6 pièces avec piscine, voirie d’accès pavée et réseau d’assainissement individuel.',
-    fullDescription: 'Ouvrage réalisé en 7 mois avec contrôle continu des dosages de béton et respect scrupuleux des normes de sécurité ivoiriennes.',
-    client: 'Particulier',
-    imageUrl: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1000&q=80',
-    gallery: [
-      'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1000&q=80'
-    ],
-    published: true,
-    featured: false
+function mapSettings(row: DatabaseSettings | null): SiteSettings {
+  if (!row) return { ...emptySettings }
+  return {
+    companyName: row.company_name,
+    logoUrl: row.logo_url || '',
+    tagline: row.tagline || '',
+    address: row.address || '',
+    city: row.city || '',
+    phone1: row.phone1 || '',
+    phone2: row.phone2 || '',
+    whatsapp: row.whatsapp || '',
+    email: row.email || '',
+    workingHours: row.working_hours || '',
+    heroTitle: row.hero_title || '',
+    heroSubtitle: row.hero_subtitle || '',
+    heroCtaText: row.hero_cta_text || '',
+    heroSecondaryCtaText: row.hero_secondary_cta_text || '',
+    homeDescription: row.home_description || '',
+    statsClients: row.stats_clients,
+    statsProjects: row.stats_projects,
+    statsYears: row.stats_years,
+    statsSatisfaction: row.stats_satisfaction,
+    socialFacebook: row.social_facebook || '',
+    socialLinkedin: row.social_linkedin || '',
+    socialInstagram: row.social_instagram || '',
+    bannerNotice: row.banner_notice || '',
+    showNotice: row.show_notice,
+    aboutHeroTitle: row.about_hero_title || '',
+    aboutHeroSubtitle: row.about_hero_subtitle || '',
+    aboutPresentationTitle: row.about_presentation_title || '',
+    aboutPresentationText: row.about_presentation_text || '',
+    aboutLocationText: row.about_location_text || '',
+    aboutMissionTitle: row.about_mission_title || '',
+    aboutMissionText: row.about_mission_text || '',
+    aboutValuesTitle: row.about_values_title || '',
+    aboutValuesSubtitle: row.about_values_subtitle || '',
+    aboutValue1Title: row.about_value_1_title || '',
+    aboutValue1Text: row.about_value_1_text || '',
+    aboutValue2Title: row.about_value_2_title || '',
+    aboutValue2Text: row.about_value_2_text || '',
+    aboutValue3Title: row.about_value_3_title || '',
+    aboutValue3Text: row.about_value_3_text || '',
+    aboutValue4Title: row.about_value_4_title || '',
+    aboutValue4Text: row.about_value_4_text || '',
+    aboutCtaTitle: row.about_cta_title || '',
+    aboutCtaText: row.about_cta_text || ''
   }
-]
+}
 
-// Default simulated quote requests
-const defaultQuotes: QuoteRequest[] = [
-  {
-    id: 'quote-101',
-    service: 'btp',
-    fullName: 'M. Kouassi Adama',
-    phone: '+225 07 48 12 34 56',
-    email: 'kouassi.adama@gmail.com',
-    location: 'Bingerville',
-    budget: '45 000 000 FCFA',
-    timeline: '3 mois',
-    description: 'Projet de construction d’une villa R+1 de 5 pièces sur un terrain viabilisé de 400 m². Besoin d’un devis quantitatif et estimatif.',
-    status: 'nouveau',
-    createdAt: '2026-11-19T14:30:00Z',
-    notes: 'Contacté par téléphone, client très intéressé par nos réalisations à Angré.'
-  },
-  {
-    id: 'quote-102',
-    service: 'electrification',
-    fullName: 'Mme Bamba Fatou',
-    phone: '+225 05 98 76 54 32',
-    email: 'fatou.bamba@ci-holding.com',
-    location: 'Zone Industrielle Yopougon',
-    budget: '18 000 000 FCFA',
-    timeline: 'Urgent (1 mois)',
-    description: 'Rénovation complète du tableau général basse tension (TGBT) et installation d’un groupe électrogène de secours de 150 kVA.',
-    status: 'en_cours',
-    createdAt: '2026-11-18T10:15:00Z',
-    notes: 'Visite technique sur site planifiée ce vendredi à 10h.'
-  },
-  {
-    id: 'quote-103',
-    service: 'gestion',
-    fullName: 'Dr. N’Guessan Patrick',
-    phone: '+225 01 22 33 44 55',
-    email: 'pnguessan@cabinet-med.ci',
-    location: 'Cocody Riviera 3',
-    budget: 'Non spécifié',
-    timeline: 'Immédiat',
-    description: 'Mise en gérance d’un immeuble de 8 appartements de standing. Recherche d’un gestionnaire rigoureux avec garantie de loyers.',
-    status: 'devis_envoye',
-    createdAt: '2026-11-16T09:00:00Z',
-    notes: 'Convention de gestion transmise par email, attente de signature.'
+const serviceIcons: Record<ServiceSlug, string> = {
+  btp: 'i-heroicons-wrench-screwdriver',
+  electrification: 'i-heroicons-bolt',
+  gestion: 'i-heroicons-key'
+}
+
+function mapStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function mapDetailItems(value: unknown): ServiceDetailItem[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is ServiceDetailItem =>
+    typeof item === 'object' &&
+    item !== null &&
+    'title' in item &&
+    typeof item.title === 'string' &&
+    'text' in item &&
+    typeof item.text === 'string'
+  )
+}
+
+function mapService(row: DatabaseSiteService): SiteService {
+  return {
+    slug: row.slug,
+    homeTitle: row.home_title,
+    detailTitle: row.detail_title,
+    badge: row.badge,
+    homeDescription: row.home_description,
+    homeHighlights: mapStringList(row.home_highlights),
+    detailDescription: row.detail_description,
+    detailItems: mapDetailItems(row.detail_items),
+    displayOrder: row.display_order,
+    published: row.published,
+    icon: serviceIcons[row.slug]
   }
-]
+}
 
-// Reactive shared state
-const settings = ref<SiteSettings>(defaultSettings)
-const projects = ref<Project[]>(defaultProjects)
-const quotes = ref<QuoteRequest[]>(defaultQuotes)
+interface DatabaseProjectImage {
+  project_id: string
+  image_url: string
+  storage_path?: string
+  is_cover: boolean
+  display_order: number
+}
 
-// Initialize from localStorage if available in browser
-let isHydrated = false
-const hydrateClientState = () => {
-  if (import.meta.client && !isHydrated) {
-    try {
-      const savedSettings = localStorage.getItem('ml_site_settings')
-      if (savedSettings) settings.value = JSON.parse(savedSettings)
+function mapProject(row: DatabaseProject, images: DatabaseProjectImage[]): Project {
+  const projectImages = images
+    .filter(image => image.project_id === row.id)
+    .sort((left, right) => left.display_order - right.display_order)
+  const imageUrl = row.cover_image_url || projectImages.find(image => image.is_cover)?.image_url || projectImages[0]?.image_url || ''
+  return {
+    id: row.id,
+    title: row.title,
+    category: row.service_type,
+    location: row.location || '',
+    date: row.project_date || '',
+    description: row.summary || row.description || '',
+    fullDescription: row.full_description || row.description || '',
+    client: row.client_name || '',
+    imageUrl,
+    imageStoragePath: projectImages.find(image => image.is_cover)?.storage_path || projectImages[0]?.storage_path,
+    gallery: projectImages.map(image => image.image_url),
+    galleryImages: projectImages
+      .filter((image): image is DatabaseProjectImage & { storage_path: string } => Boolean(image.storage_path))
+      .map(image => ({ imageUrl: image.image_url, storagePath: image.storage_path })),
+    published: row.published,
+    featured: row.featured,
+    displayOrder: row.display_order
+  }
+}
 
-      const savedProjects = localStorage.getItem('ml_site_projects')
-      if (savedProjects) projects.value = JSON.parse(savedProjects)
-
-      const savedQuotes = localStorage.getItem('ml_site_quotes')
-      if (savedQuotes) quotes.value = JSON.parse(savedQuotes)
-
-      isHydrated = true
-    } catch (e) {
-      console.warn('Storage hydration notice:', e)
-    }
+function mapQuote(row: Record<string, unknown>): QuoteRequest {
+  return {
+    id: String(row.id),
+    service: row.service as QuoteRequest['service'],
+    fullName: String(row.full_name),
+    phone: String(row.phone),
+    email: typeof row.email === 'string' ? row.email : '',
+    location: typeof row.location === 'string' ? row.location : '',
+    budget: typeof row.budget === 'string' ? row.budget : '',
+    timeline: typeof row.timeline === 'string' ? row.timeline : '',
+    description: String(row.description),
+    status: row.status as QuoteRequest['status'],
+    createdAt: String(row.created_at),
+    notes: typeof row.admin_notes === 'string' ? row.admin_notes : ''
   }
 }
 
 export function useSiteData() {
-  if (import.meta.client) {
-    hydrateClientState()
+  const settings = useState<SiteSettings>('site-settings', () => ({ ...emptySettings }))
+  const projects = useState<Project[]>('site-projects', () => [])
+  const quotes = useState<QuoteRequest[]>('site-quotes', () => [])
+  const testimonials = useState<Testimonial[]>('site-testimonials', () => [])
+  const services = useState<SiteService[]>('site-services', () => [])
+  const siteImages = useState<SiteImage[]>('site-images', () => [])
+  const siteImagesFetched = useState<boolean>('site-images-fetched', () => false)
+  const isPublicDataLoaded = useState<boolean>('site-public-data-loaded', () => false)
+  const isAdminDataLoaded = useState<boolean>('site-admin-data-loaded', () => false)
+  const isAdminServicesLoaded = useState<boolean>('site-admin-services-loaded', () => false)
+
+  const publishedProjects = computed(() => projects.value.filter(project => project.published))
+  const featuredProjects = computed(() => projects.value.filter(project => project.published && project.featured))
+  const publishedTestimonials = computed(() => testimonials.value.filter(testimonial => testimonial.published))
+  const publishedServices = computed(() =>
+    services.value
+      .filter(service => service.published)
+      .sort((left, right) => left.displayOrder - right.displayOrder)
+  )
+  const pendingQuotesCount = computed(() => quotes.value.filter(quote => quote.status === 'nouveau').length)
+
+  const loadPublicData = async (force = false) => {
+    if (isPublicDataLoaded.value && !force) return
+    if (force) clearNuxtData('site-public-data')
+
+    const { data, error } = await useAsyncData('site-public-data', () => $fetch<{
+      settings: DatabaseSettings | null
+      projects: DatabaseProject[]
+      testimonials: Testimonial[]
+      services: DatabaseSiteService[]
+      projectImages: DatabaseProjectImage[]
+      siteImages: SiteImage[]
+    }>('/api/site-data'), { dedupe: 'defer' })
+
+    if (error.value) throw error.value
+    const result = data.value
+    if (!result) throw new Error('Les données publiques du site sont indisponibles')
+
+    settings.value = mapSettings(result.settings)
+    projects.value = result.projects.map(row => mapProject(row, result.projectImages))
+    testimonials.value = result.testimonials
+    services.value = result.services.map(mapService)
+    siteImages.value = result.siteImages
+    siteImagesFetched.value = true
+    isPublicDataLoaded.value = true
   }
 
-  // --- SETTINGS ACTIONS ---
-  const saveSettings = (newSettings: SiteSettings) => {
+  const loadAdminData = async (force = false) => {
+    if (isAdminDataLoaded.value && !force) return
+    const data = await $fetch<{
+      settings: DatabaseSettings | null
+      projects: DatabaseProject[]
+      testimonials: Testimonial[]
+      quotes: Array<Record<string, unknown>>
+      projectImages: DatabaseProjectImage[]
+    }>('/api/admin/data')
+    settings.value = mapSettings(data.settings)
+    projects.value = data.projects.map(row => mapProject(row, data.projectImages))
+    testimonials.value = data.testimonials
+    quotes.value = data.quotes.map(mapQuote)
+    isAdminDataLoaded.value = true
+  }
+
+  const loadAdminServices = async (force = false) => {
+    if (isAdminServicesLoaded.value && !force) return
+    const data = await $fetch<DatabaseSiteService[]>('/api/admin/services')
+    services.value = data.map(mapService)
+    isAdminServicesLoaded.value = true
+  }
+
+  const saveService = async (service: SiteService) => {
+    const updated = await $fetch<DatabaseSiteService>(`/api/admin/services/${service.slug}`, {
+      method: 'PATCH',
+      body: {
+        home_title: service.homeTitle,
+        detail_title: service.detailTitle,
+        badge: service.badge,
+        home_description: service.homeDescription,
+        home_highlights: service.homeHighlights,
+        detail_description: service.detailDescription,
+        detail_items: service.detailItems,
+        display_order: service.displayOrder,
+        published: service.published
+      }
+    })
+    const mapped = mapService(updated)
+    services.value = services.value.some(item => item.slug === mapped.slug)
+      ? services.value.map(item => item.slug === mapped.slug ? mapped : item)
+      : [...services.value, mapped]
+    isAdminServicesLoaded.value = true
+    clearNuxtData('site-public-data')
+  }
+
+  const saveSettings = async (newSettings: SiteSettings) => {
+    await $fetch('/api/admin/site-settings', { method: 'PATCH', body: newSettings })
     settings.value = { ...newSettings }
-    if (import.meta.client) {
-      localStorage.setItem('ml_site_settings', JSON.stringify(settings.value))
-    }
+    clearNuxtData('site-public-data')
+    isPublicDataLoaded.value = false
   }
 
-  // --- PROJECTS ACTIONS ---
-  const addProject = (projectData: Omit<Project, 'id'>) => {
-    const newProject: Project = {
-      ...projectData,
-      id: `proj-${Date.now()}`
-    }
-    projects.value.unshift(newProject)
-    if (import.meta.client) {
-      localStorage.setItem('ml_site_projects', JSON.stringify(projects.value))
-    }
-    return newProject
+  const addProject = async (projectData: Omit<Project, 'id'>) => {
+    await $fetch('/api/admin/projects', { method: 'POST', body: projectData })
+    await loadAdminData(true)
   }
 
-  const updateProject = (id: string, projectData: Partial<Project>) => {
-    const index = projects.value.findIndex(p => p.id === id)
-    const project = projects.value[index]
-    if (project) {
-      projects.value[index] = { ...project, ...projectData }
-      if (import.meta.client) {
-        localStorage.setItem('ml_site_projects', JSON.stringify(projects.value))
-      }
-    }
+  const updateProject = async (id: string, projectData: Partial<Project>) => {
+    await $fetch(`/api/admin/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body: projectData })
+    await loadAdminData(true)
   }
 
-  const deleteProject = (id: string) => {
-    projects.value = projects.value.filter(p => p.id !== id)
-    if (import.meta.client) {
-      localStorage.setItem('ml_site_projects', JSON.stringify(projects.value))
-    }
+  const deleteProject = async (id: string) => {
+    await $fetch(`/api/admin/projects/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    await loadAdminData(true)
   }
 
-  const toggleProjectPublish = (id: string) => {
-    const project = projects.value.find(p => p.id === id)
-    if (project) {
-      project.published = !project.published
-      if (import.meta.client) {
-        localStorage.setItem('ml_site_projects', JSON.stringify(projects.value))
-      }
-    }
+  const toggleProjectPublish = async (id: string) => {
+    const project = projects.value.find(item => item.id === id)
+    if (!project) return
+    await updateProject(id, { published: !project.published })
   }
 
-  // --- QUOTES ACTIONS ---
-  const addQuote = (quoteData: Omit<QuoteRequest, 'id' | 'status' | 'createdAt'>) => {
-    const newQuote: QuoteRequest = {
-      ...quoteData,
-      id: `quote-${Date.now()}`,
-      status: 'nouveau',
-      createdAt: new Date().toISOString()
-    }
-    quotes.value.unshift(newQuote)
-    if (import.meta.client) {
-      localStorage.setItem('ml_site_quotes', JSON.stringify(quotes.value))
-    }
-    return newQuote
+  const updateQuoteStatus = async (id: string, status: QuoteRequest['status'], notes?: string) => {
+    await $fetch(`/api/admin/quotes/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: { status, ...(notes !== undefined ? { admin_notes: notes } : {}) }
+    })
+    await loadAdminData(true)
   }
 
-  const updateQuoteStatus = (id: string, status: QuoteRequest['status'], notes?: string) => {
-    const quote = quotes.value.find(q => q.id === id)
-    if (quote) {
-      quote.status = status
-      if (notes !== undefined) quote.notes = notes
-      if (import.meta.client) {
-        localStorage.setItem('ml_site_quotes', JSON.stringify(quotes.value))
-      }
-    }
+  const deleteQuote = async (id: string) => {
+    await $fetch(`/api/admin/quotes/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    await loadAdminData(true)
   }
 
-  const deleteQuote = (id: string) => {
-    quotes.value = quotes.value.filter(q => q.id !== id)
-    if (import.meta.client) {
-      localStorage.setItem('ml_site_quotes', JSON.stringify(quotes.value))
+  const saveTestimonial = async (testimonial: Partial<Testimonial> & Pick<Testimonial, 'client_name' | 'testimonial_text'>) => {
+    const id = testimonial.id
+    if (id) {
+      await $fetch(`/api/admin/testimonials/${encodeURIComponent(id)}`, { method: 'PATCH', body: testimonial })
+    } else {
+      await $fetch('/api/admin/testimonials', { method: 'POST', body: testimonial })
     }
+    await loadAdminData(true)
   }
 
-  // --- COMPUTED ---
-  const publishedProjects = computed(() => projects.value.filter(p => p.published))
-  const featuredProjects = computed(() => projects.value.filter(p => p.published && p.featured))
-  const pendingQuotesCount = computed(() => quotes.value.filter(q => q.status === 'nouveau').length)
+  const deleteTestimonial = async (id: string) => {
+    await $fetch(`/api/admin/testimonials/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    await loadAdminData(true)
+  }
 
   return {
     settings,
@@ -339,14 +532,23 @@ export function useSiteData() {
     publishedProjects,
     featuredProjects,
     quotes,
+    testimonials,
+    publishedTestimonials,
+    services,
+    publishedServices,
     pendingQuotesCount,
+    loadPublicData,
+    loadAdminData,
+    loadAdminServices,
+    saveService,
     saveSettings,
     addProject,
     updateProject,
     deleteProject,
     toggleProjectPublish,
-    addQuote,
     updateQuoteStatus,
     deleteQuote,
+    saveTestimonial,
+    deleteTestimonial
   }
 }

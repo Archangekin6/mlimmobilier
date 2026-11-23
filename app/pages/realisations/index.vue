@@ -5,6 +5,7 @@ import { useSiteData, type Project } from '~/composables/useSiteData'
 
 const route = useRoute()
 const { settings, publishedProjects } = useSiteData()
+const whatsappNumber = computed(() => settings.value.whatsapp.replace(/\D/g, ''))
 const selectedCategory = ref<'all' | 'btp' | 'electrification' | 'gestion'>('all')
 const activeModalProject = ref<Project | null>(null)
 const currentPhotoIndex = ref(0)
@@ -12,8 +13,8 @@ const currentPhotoIndex = ref(0)
 onMounted(() => {
   if (route.query.category) {
     const cat = String(route.query.category).toLowerCase()
-    if (['all', 'btp', 'electrification', 'gestion'].includes(cat)) {
-      selectedCategory.value = cat as any
+    if (cat === 'all' || cat === 'btp' || cat === 'electrification' || cat === 'gestion') {
+      selectedCategory.value = cat
     }
   }
 })
@@ -36,7 +37,7 @@ const closeProjectModal = () => {
 
 useSeoMeta({
   title: 'Nos Réalisations | Galerie Photos BTP & Énergie Abidjan',
-  description: 'Découvrez les chantiers et réalisations de ML Immobilier SARL : Immeubles BTP, lotissements électrifiés et parcs locatifs gérés à Abidjan.'
+  description: `Découvrez les chantiers et réalisations de ${settings.value.companyName} à Abidjan.`
 })
 </script>
 
@@ -237,7 +238,8 @@ useSeoMeta({
           <div class="pt-4 border-t border-neutral-200 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div class="flex items-center gap-2 w-full sm:w-auto">
               <a
-                :href="`https://wa.me/${settings.whatsapp}?text=${encodeURIComponent(`Bonjour ML Immobilier, je souhaite un devis suite au projet : ${activeModalProject.title}`)}`"
+                v-if="whatsappNumber"
+                :href="`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Bonjour ${settings.companyName}, je souhaite un devis suite au projet : ${activeModalProject.title}`)}`"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 bg-[#25D366] hover:bg-[#20BA59] text-white font-semibold text-xs uppercase tracking-wider px-4 py-2.5 rounded-sm transition-colors shadow-xs"
@@ -248,6 +250,7 @@ useSeoMeta({
                 <span>WhatsApp</span>
               </a>
               <a
+                v-if="settings.phone1"
                 :href="`tel:${settings.phone1.replace(/\s+/g, '')}`"
                 class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border border-neutral-300 font-semibold text-xs uppercase tracking-wider px-4 py-2.5 rounded-sm transition-colors"
               >

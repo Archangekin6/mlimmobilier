@@ -1,12 +1,12 @@
 import { getRequestURL } from 'h3'
 import { serverSupabaseClient } from '#supabase/server'
+import { isAdminProfileForUser } from '~~/server/utils/admin-auth'
 
 export default defineEventHandler(async (event) => {
   const path = getRequestURL(event).pathname
   const isAdminApi = path === '/api/admin' || path.startsWith('/api/admin/')
-  const isAdminUpload = path === '/api/upload'
 
-  if (!isAdminApi && !isAdminUpload) {
+  if (!isAdminApi) {
     return
   }
 
@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  if (!profile) {
+  if (!isAdminProfileForUser(user.id, profile)) {
     throw createError({
       statusCode: 403,
       statusMessage: 'Accès non autorisé'

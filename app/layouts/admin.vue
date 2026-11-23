@@ -1,11 +1,22 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useAuth } from '~/composables/useAuth'
+import { useSiteData } from '~/composables/useSiteData'
 
 const router = useRouter()
 const { adminProfile, logout, isAuthenticated, isLoadingProfile } = useAuth()
-const { pendingQuotesCount: quotesCount } = useSiteData()
+const { pendingQuotesCount: quotesCount, loadAdminData } = useSiteData()
 const logoutError = ref('')
+const dataLoadError = ref('')
+
+onMounted(async () => {
+  try {
+    await loadAdminData()
+  } catch (error) {
+    console.error('Erreur de chargement des données administratives:', error)
+    dataLoadError.value = 'Impossible de charger les données administratives.'
+  }
+})
 
 watch([isAuthenticated, isLoadingProfile], ([authenticated, loading]) => {
   if (!authenticated && !loading) {
@@ -26,10 +37,14 @@ const handleLogout = async () => {
 
 const navItems = [
   { label: 'Tableau de bord', to: '/admin', icon: 'i-heroicons-squares-2x2', exact: true },
-  { label: 'Demandes de devis', to: '/admin/devis', icon: 'i-heroicons-inbox-stack' },
+  { label: 'Accueil', to: '/admin/accueil', icon: 'i-heroicons-home' },
+  { label: 'Qui sommes-nous', to: '/admin/qui-sommes-nous', icon: 'i-heroicons-building-office-2' },
+  { label: 'Services', to: '/admin/services', icon: 'i-heroicons-wrench-screwdriver' },
   { label: 'Réalisations', to: '/admin/realisations', icon: 'i-heroicons-photo' },
-  { label: 'Images du site', to: '/admin/images', icon: 'i-heroicons-photo-solid' },
-  { label: 'Réglages', to: '/admin/reglages', icon: 'i-heroicons-cog-6-tooth' }
+  { label: 'Témoignages', to: '/admin/temoignages', icon: 'i-heroicons-chat-bubble-left-right' },
+  { label: 'Coordonnées & contact', to: '/admin/reglages', icon: 'i-heroicons-identification' },
+  { label: 'Demandes de devis', to: '/admin/devis', icon: 'i-heroicons-inbox-stack' },
+  { label: 'Bibliothèque d’images', to: '/admin/images', icon: 'i-heroicons-photo-solid' }
 ]
 </script>
 
@@ -138,6 +153,9 @@ const navItems = [
 
       <!-- Page Body Slot -->
       <main class="flex-1 p-6 sm:p-8 overflow-y-auto">
+        <p v-if="dataLoadError" class="mb-4 border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          {{ dataLoadError }}
+        </p>
         <slot />
       </main>
     </div>

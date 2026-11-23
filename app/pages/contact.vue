@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSiteData, type QuoteRequest } from '~/composables/useSiteData'
 
 interface TurnstileRenderOptions {
   sitekey: string
-  size: 'invisible'
-  appearance: 'interaction-only'
+  size: 'normal'
   callback: (token: string) => void
   'error-callback': () => void
   'expired-callback': () => void
@@ -14,7 +13,7 @@ interface TurnstileRenderOptions {
 
 interface TurnstileApi {
   render: (container: HTMLElement, options: TurnstileRenderOptions) => string
-  execute: (widgetId: string) => void
+  getResponse: (widgetId: string) => string
   reset: (widgetId: string) => void
   remove: (widgetId: string) => void
 }
@@ -26,27 +25,25 @@ declare global {
 }
 
 const route = useRoute()
-const { settings, addQuote } = useSiteData()
+const { settings, publishedServices } = useSiteData()
+const whatsappNumber = computed(() => settings.value.whatsapp.replace(/\D/g, ''))
+const mapQuery = computed(() => [settings.value.address, settings.value.city].filter(Boolean).join(' '))
 const turnstileSiteKey = useRuntimeConfig().public.turnstileSiteKey
 const turnstileContainer = ref<HTMLElement | null>(null)
 const turnstileWidgetId = ref<string | null>(null)
 const turnstileError = ref('')
 let turnstileLoadPromise: Promise<TurnstileApi> | null = null
 let turnstileInitPromise: Promise<void> | null = null
-let resolveTurnstileToken: ((token: string) => void) | null = null
-let rejectTurnstileToken: ((error: Error) => void) | null = null
-let turnstileTimeout: ReturnType<typeof setTimeout> | null = null
 
 const form = ref({
-  service: 'btp' as QuoteRequest['service'],
+  service: (publishedServices.value[0]?.slug ?? 'autre') as QuoteRequest['service'],
   fullName: '',
   phone: '',
   email: '',
   location: '',
   budget: '',
   timeline: '',
-  description: '',
-  honeypot: ''
+  description: ''
 })
 
 const isSubmitting = ref(false)
@@ -90,8 +87,11 @@ const resetTurnstileWidget = () => {
 onMounted(() => {
   if (route.query.service) {
     const s = String(route.query.service).toLowerCase()
-    if (['btp', 'electrification', 'gestion'].includes(s)) {
-      form.value.service = s as any
+    const selectedService = publishedServices.value.find(service => service.slug === s)
+    if (selectedService) {
+      form.value.service = selectedService.slug
+    } else {
+      form.value.service = 'autre'
     }
   }
   if (route.query.project) {
@@ -136,26 +136,6 @@ const loadTurnstile = (): Promise<TurnstileApi> => {
   return turnstileLoadPromise
 }
 
-const settleTurnstileToken = (error?: Error, token?: string) => {
-  if (turnstileTimeout) {
-    clearTimeout(turnstileTimeout)
-    turnstileTimeout = null
-  }
-
-  const resolve = resolveTurnstileToken
-  const reject = rejectTurnstileToken
-  resolveTurnstileToken = null
-  rejectTurnstileToken = null
-
-  if (error) {
-    turnstileError.value = 'La vérification de sécurité a échoué. Veuillez réessayer.'
-    reject?.(error)
-  } else if (token) {
-    turnstileError.value = ''
-    resolve?.(token)
-  }
-}
-
 const initializeTurnstile = async () => {
   if (!turnstileSiteKey || !turnstileContainer.value || turnstileWidgetId.value) {
     return
@@ -168,11 +148,14 @@ const initializeTurnstile = async () => {
 
   turnstileWidgetId.value = api.render(turnstileContainer.value, {
     sitekey: turnstileSiteKey,
-    size: 'invisible',
-    appearance: 'interaction-only',
-    callback: token => settleTurnstileToken(undefined, token),
-    'error-callback': () => settleTurnstileToken(new Error('Turnstile verification failed')),
-    'expired-callback': () => settleTurnstileToken(new Error('Turnstile token expired'))
+    size: 'normal',
+    callback: () => { turnstileError.value = '' },
+    'error-callback': () => {
+      turnstileError.value = 'La vérification de sécurité a échoué. Veuillez réessayer.'
+    },
+    'expired-callback': () => {
+      turnstileError.value = 'La vérification de sécurité a expiré. Veuillez recommencer.'
+    }
   })
 }
 
@@ -196,33 +179,30 @@ const getTurnstileToken = async (): Promise<string> => {
     throw new Error('La vérification de sécurité est indisponible.')
   }
 
-  api.reset(widgetId)
-
-  return new Promise<string>((resolve, reject) => {
-    resolveTurnstileToken = resolve
-    rejectTurnstileToken = reject
-    turnstileTimeout = setTimeout(() => {
-      settleTurnstileToken(new Error('Turnstile verification timed out'))
-    }, 30_000)
-
-    try {
-      api.execute(widgetId)
-    } catch (error) {
-      settleTurnstileToken(
-        error instanceof Error ? error : new Error('Turnstile verification failed')
-      )
-    }
-  })
+  const token = api.getResponse(widgetId)
+  if (!token) {
+    throw new Error('Veuillez compléter la vérification de sécurité.')
+  }
+  return token
 }
 
 onBeforeUnmount(() => {
-  if (turnstileTimeout) {
-    clearTimeout(turnstileTimeout)
-  }
   if (turnstileWidgetId.value && window.turnstile) {
     window.turnstile.remove(turnstileWidgetId.value)
   }
 })
+
+const startNewRequest = async () => {
+  submittedSuccess.value = false
+  await nextTick()
+  if (turnstileSiteKey) {
+    turnstileInitPromise = initializeTurnstile()
+    void turnstileInitPromise.catch(() => {
+      turnstileInitPromise = null
+      turnstileError.value = 'La vérification de sécurité est indisponible.'
+    })
+  }
+}
 
 const submitQuoteForm = async () => {
   errorMessage.value = ''
@@ -236,6 +216,7 @@ const submitQuoteForm = async () => {
   isSubmitting.value = true
 
   try {
+    await $fetch('/api/quotes/session')
     const turnstileToken = await getTurnstileToken()
     const response = await $fetch<{ success: boolean; quote_id: string }>('/api/quotes/submit', {
       method: 'POST',
@@ -244,11 +225,10 @@ const submitQuoteForm = async () => {
         full_name: form.value.fullName,
         phone: form.value.phone,
         email: form.value.email,
-        location: form.value.location || 'Abidjan',
-        budget: form.value.budget || 'Non spécifié',
-        timeline: form.value.timeline || 'À convenir',
+        location: form.value.location,
+        budget: form.value.budget,
+        timeline: form.value.timeline,
         description: form.value.description,
-        honeypot: form.value.honeypot,
         turnstile_token: turnstileToken
       }
     })
@@ -257,19 +237,13 @@ const submitQuoteForm = async () => {
       throw new Error('Le serveur n’a pas confirmé l’enregistrement de la demande.')
     }
 
-    addQuote({
-      service: form.value.service,
-      fullName: form.value.fullName,
-      phone: form.value.phone,
-      email: form.value.email || 'Non renseigné',
-      location: form.value.location || 'Abidjan',
-      budget: form.value.budget || 'Non spécifié',
-      timeline: form.value.timeline || 'À convenir',
-      description: form.value.description
-    })
-
     await new Promise(resolve => setTimeout(resolve, 600))
 
+    if (turnstileWidgetId.value && window.turnstile) {
+      window.turnstile.remove(turnstileWidgetId.value)
+      turnstileWidgetId.value = null
+      turnstileInitPromise = null
+    }
     submittedSuccess.value = true
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -282,8 +256,7 @@ const submitQuoteForm = async () => {
       location: '',
       budget: '',
       timeline: '',
-      description: '',
-      honeypot: ''
+      description: ''
     }
   } catch (error: unknown) {
     resetTurnstileWidget()
@@ -294,7 +267,7 @@ const submitQuoteForm = async () => {
     } else if (statusCode === 429) {
       errorMessage.value = statusMessage || 'Trop de demandes ont été envoyées. Veuillez réessayer plus tard.'
     } else if (statusCode === 503) {
-      errorMessage.value = 'La protection anti-abus est temporairement indisponible. Veuillez réessayer plus tard.'
+      errorMessage.value = statusMessage || 'La protection anti-abus est temporairement indisponible. Veuillez réessayer plus tard.'
     } else {
       errorMessage.value = turnstileError.value || statusMessage || 'Une erreur est survenue lors de l’envoi. Veuillez nous contacter directement par téléphone ou WhatsApp.'
     }
@@ -304,8 +277,8 @@ const submitQuoteForm = async () => {
 }
 
 useSeoMeta({
-  title: 'Contact & Demande de Devis Gratuit | ML Immobilier SARL Abidjan',
-  description: 'Demandez votre devis gratuit pour travaux de BTP, électrification ou gestion immobilière à Abidjan (Yopougon Terminus 27). Réponse sous 24h.'
+  title: `Contact & Demande de Devis | ${settings.value.companyName}`,
+  description: `Contactez ${settings.value.companyName} pour vos projets de BTP, d’électrification ou de gestion immobilière.`
 })
 </script>
 
@@ -344,11 +317,11 @@ useSeoMeta({
               <span>Demande envoyée avec succès</span>
             </div>
             <p class="text-xs text-emerald-800/90 leading-relaxed">
-              Nous avons bien enregistré votre projet. Un ingénieur de <strong>ML Immobilier SARL</strong> vous contactera pour convenir d'une visite de chantier ou vous transmettre votre chiffrage.
+              Nous avons bien enregistré votre projet. Un ingénieur de <strong>{{ settings.companyName }}</strong> vous contactera pour convenir d'une visite de chantier ou vous transmettre votre chiffrage.
             </p>
             <button
               type="button"
-              @click="submittedSuccess = false"
+              @click="startNewRequest"
               class="mt-2 text-xs font-semibold text-emerald-900 underline uppercase tracking-wider"
             >
               Faire une nouvelle demande
@@ -362,10 +335,10 @@ useSeoMeta({
 
           <!-- The Form -->
           <form v-if="!submittedSuccess" @submit.prevent="submitQuoteForm" class="space-y-5">
-            <div ref="turnstileContainer" class="fixed left-[-10000px] top-0" aria-hidden="true" />
-
-            <!-- Honeypot -->
-            <input type="text" name="b_trap" v-model="form.honeypot" class="hidden" tabindex="-1" autocomplete="off" />
+            <div ref="turnstileContainer" class="min-h-[65px]" />
+            <p v-if="turnstileError" role="alert" class="text-xs text-red-700">
+              {{ turnstileError }}
+            </p>
 
             <!-- Service Selection -->
             <div class="space-y-1.5">
@@ -374,33 +347,15 @@ useSeoMeta({
               </label>
               <div class="grid grid-cols-2 gap-2">
                 <button
+                  v-for="service in publishedServices"
+                  :key="service.slug"
                   type="button"
-                  @click="form.service = 'btp'"
-                  :class="form.service === 'btp' ? 'bg-neutral-900 text-white font-bold border-neutral-900 shadow-xs' : 'bg-neutral-50 text-neutral-800 border-neutral-200 hover:bg-neutral-100'"
+                  @click="form.service = service.slug"
+                  :class="form.service === service.slug ? 'bg-neutral-900 text-white font-bold border-neutral-900 shadow-xs' : 'bg-neutral-50 text-neutral-800 border-neutral-200 hover:bg-neutral-100'"
                   class="py-2.5 px-3 rounded-sm border text-xs text-center transition-colors flex items-center justify-center gap-2 uppercase tracking-wider font-semibold"
                 >
-                  <UIcon name="i-heroicons-wrench-screwdriver" class="w-4 h-4" />
-                  <span>BTP</span>
-                </button>
-
-                <button
-                  type="button"
-                  @click="form.service = 'electrification'"
-                  :class="form.service === 'electrification' ? 'bg-neutral-900 text-white font-bold border-neutral-900 shadow-xs' : 'bg-neutral-50 text-neutral-800 border-neutral-200 hover:bg-neutral-100'"
-                  class="py-2.5 px-3 rounded-sm border text-xs text-center transition-colors flex items-center justify-center gap-2 uppercase tracking-wider font-semibold"
-                >
-                  <UIcon name="i-heroicons-bolt" class="w-4 h-4" />
-                  <span>Électrification</span>
-                </button>
-
-                <button
-                  type="button"
-                  @click="form.service = 'gestion'"
-                  :class="form.service === 'gestion' ? 'bg-neutral-900 text-white font-bold border-neutral-900 shadow-xs' : 'bg-neutral-50 text-neutral-800 border-neutral-200 hover:bg-neutral-100'"
-                  class="py-2.5 px-3 rounded-sm border text-xs text-center transition-colors flex items-center justify-center gap-2 uppercase tracking-wider font-semibold"
-                >
-                  <UIcon name="i-heroicons-key" class="w-4 h-4" />
-                  <span>Gestion Immo</span>
+                  <UIcon :name="service.icon" class="w-4 h-4" />
+                  <span>{{ service.homeTitle }}</span>
                 </button>
 
                 <button
@@ -464,7 +419,7 @@ useSeoMeta({
                 <input
                   v-model="form.location"
                   type="text"
-                  placeholder="Yopougon, Cocody..."
+                  placeholder="Commune, ville..."
                   class="w-full px-3.5 py-2.5 rounded-sm border border-neutral-300 text-xs text-neutral-950 focus:border-neutral-900 focus:outline-none"
                 />
               </div>
@@ -525,7 +480,7 @@ useSeoMeta({
             </div>
 
             <p class="text-[10px] text-neutral-500 text-center uppercase tracking-wider">
-              Traitement confidentiel conforme aux règles de ML Immobilier SARL.
+              Traitement confidentiel conforme aux règles de {{ settings.companyName }}.
             </p>
           </form>
         </div>
@@ -539,33 +494,33 @@ useSeoMeta({
             </h3>
 
             <div class="space-y-4 text-xs">
-              <div class="flex items-start gap-3">
+              <div v-if="settings.address || settings.city" class="flex items-start gap-3">
                 <div class="w-8 h-8 rounded-sm bg-neutral-100 flex items-center justify-center shrink-0 border border-neutral-200">
                   <UIcon name="i-heroicons-map-pin" class="w-4 h-4 text-neutral-700" />
                 </div>
                 <div>
                   <div class="font-bold text-neutral-950 uppercase tracking-wider text-[11px]">Siège Social</div>
-                  <div class="text-neutral-700">{{ settings.address }}</div>
-                  <div class="text-neutral-500">{{ settings.city }}</div>
+                  <div v-if="settings.address" class="text-neutral-700">{{ settings.address }}</div>
+                  <div v-if="settings.city" class="text-neutral-500">{{ settings.city }}</div>
                 </div>
               </div>
 
-              <div class="flex items-start gap-3">
+              <div v-if="settings.phone1 || settings.phone2" class="flex items-start gap-3">
                 <div class="w-8 h-8 rounded-sm bg-neutral-100 flex items-center justify-center shrink-0 border border-neutral-200">
                   <UIcon name="i-heroicons-phone" class="w-4 h-4 text-neutral-700" />
                 </div>
                 <div>
                   <div class="font-bold text-neutral-950 uppercase tracking-wider text-[11px]">Téléphone</div>
-                  <a :href="`tel:${settings.phone1.replace(/\s+/g, '')}`" class="block text-neutral-900 hover:underline font-mono font-semibold">
+                  <a v-if="settings.phone1" :href="`tel:${settings.phone1.replace(/\s+/g, '')}`" class="block text-neutral-900 hover:underline font-mono font-semibold">
                     {{ settings.phone1 }}
                   </a>
-                  <a :href="`tel:${settings.phone2.replace(/\s+/g, '')}`" class="block text-neutral-500 hover:underline text-[11px] font-mono">
+                  <a v-if="settings.phone2" :href="`tel:${settings.phone2.replace(/\s+/g, '')}`" class="block text-neutral-500 hover:underline text-[11px] font-mono">
                     {{ settings.phone2 }}
                   </a>
                 </div>
               </div>
 
-              <div class="flex items-start gap-3">
+              <div v-if="whatsappNumber" class="flex items-start gap-3">
                 <div class="w-8 h-8 rounded-sm bg-emerald-50 flex items-center justify-center shrink-0 border border-emerald-200">
                   <svg class="w-4 h-4 fill-emerald-600" viewBox="0 0 24 24">
                     <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.592 2.654-.697c.969.53 1.83.824 2.806.824 3.182 0 5.768-2.586 5.768-5.766.001-3.18-2.585-5.766-5.768-5.766zm9.969 5.766c0 5.485-4.464 9.949-9.969 9.949-1.748 0-3.385-.453-4.819-1.246l-5.212 1.359 1.385-5.074c-.9-1.488-1.423-3.23-1.423-5.088 0-5.485 4.464-9.949 9.969-9.949 5.505 0 9.969 4.464 9.969 9.949z"/>
@@ -574,17 +529,17 @@ useSeoMeta({
                 <div>
                   <div class="font-bold text-neutral-950 uppercase tracking-wider text-[11px]">Ligne WhatsApp</div>
                   <a
-                    :href="`https://wa.me/${settings.whatsapp}?text=${encodeURIComponent('Bonjour ML Immobilier, je souhaite un devis.')}`"
+                    :href="`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Bonjour ${settings.companyName}, je souhaite un devis.`)}`"
                     target="_blank"
                     rel="noopener noreferrer"
                     class="text-emerald-700 hover:underline font-mono font-semibold"
                   >
-                    +{{ settings.whatsapp }}
+                    {{ settings.whatsapp }}
                   </a>
                 </div>
               </div>
 
-              <div class="flex items-start gap-3">
+              <div v-if="settings.email" class="flex items-start gap-3">
                 <div class="w-8 h-8 rounded-sm bg-neutral-100 flex items-center justify-center shrink-0 border border-neutral-200">
                   <UIcon name="i-heroicons-envelope" class="w-4 h-4 text-neutral-700" />
                 </div>
@@ -596,7 +551,7 @@ useSeoMeta({
                 </div>
               </div>
 
-              <div class="flex items-start gap-3">
+              <div v-if="settings.workingHours" class="flex items-start gap-3">
                 <div class="w-8 h-8 rounded-sm bg-neutral-100 flex items-center justify-center shrink-0 border border-neutral-200">
                   <UIcon name="i-heroicons-clock" class="w-4 h-4 text-neutral-700" />
                 </div>
@@ -609,17 +564,17 @@ useSeoMeta({
           </div>
 
           <!-- Mini Map Embed -->
-          <div class="bg-white rounded-md p-5 border border-neutral-200 space-y-3 shadow-sm">
+          <div v-if="mapQuery" class="bg-white rounded-md p-5 border border-neutral-200 space-y-3 shadow-sm">
             <h4 class="font-bold text-neutral-950 text-xs uppercase tracking-wider flex items-center gap-2">
               <UIcon name="i-heroicons-map" class="w-4 h-4 text-neutral-800" />
-              <span>Accès Yopougon Terminus 27</span>
+              <span>{{ mapQuery }}</span>
             </h4>
             <div class="h-60 rounded-sm overflow-hidden border border-neutral-200">
               <iframe
-                title="Carte d'accès Yopougon Terminus 27"
+                :title="`Carte d’accès ${mapQuery}`"
                 class="w-full h-full border-0"
                 loading="lazy"
-                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d15889.378938927847!2d-4.0850!3d5.3350!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xfc1ea35f3781297%3A0x6b8bc215091702f3!2sYopougon%2C%20Abidjan!5e0!3m2!1sfr!2sci!4v1700000000000!5m2!1sfr!2sci"
+                :src="`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`"
               ></iframe>
             </div>
           </div>

@@ -1,21 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useSiteData } from '~/composables/useSiteData'
 import { useSiteImages } from '~/composables/useSiteImages'
 
 const { settings } = useSiteData()
-const { fetchSiteImages, getImageBySection } = useSiteImages()
-
-// Fetch site images on mount
-onMounted(async () => {
-  await fetchSiteImages()
-})
+const { getImageBySection } = useSiteImages()
 
 // Get hero background image
 const heroImage = computed(() => {
   const img = getImageBySection('about', 'hero_background')
   return {
-    url: img?.image_url || 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=2000&q=80',
+    url: img?.image_url || '',
     alt: img?.alt_text || 'Architecture moderne Abidjan'
   }
 })
@@ -24,14 +19,28 @@ const heroImage = computed(() => {
 const presentationImage = computed(() => {
   const img = getImageBySection('about', 'presentation_image')
   return {
-    url: img?.image_url || 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=1000&q=80',
+    url: img?.image_url || '',
     alt: img?.alt_text || 'Équipe technique ML Immobilier SARL'
   }
 })
 
+const aboutValues = computed(() => [
+  { title: settings.value.aboutValue1Title, text: settings.value.aboutValue1Text, icon: 'i-heroicons-shield-check' },
+  { title: settings.value.aboutValue2Title, text: settings.value.aboutValue2Text, icon: 'i-heroicons-document-text' },
+  { title: settings.value.aboutValue3Title, text: settings.value.aboutValue3Text, icon: 'i-heroicons-clock' },
+  { title: settings.value.aboutValue4Title, text: settings.value.aboutValue4Text, icon: 'i-heroicons-user' }
+].filter(value => value.title || value.text))
+
+const aboutStats = computed(() => [
+  { value: settings.value.statsProjects, label: 'Chantiers livrés', prefix: '+' },
+  { value: settings.value.statsClients, label: 'Clients accompagnés', prefix: '+' },
+  { value: settings.value.statsYears, label: 'Ans d’expérience', prefix: '+' },
+  { value: settings.value.statsSatisfaction, label: 'Satisfaction', prefix: '', suffix: '%' }
+].filter(stat => stat.value !== null))
+
 useSeoMeta({
-  title: 'Qui sommes-nous | ML Immobilier SARL Abidjan',
-  description: 'Présentation de ML Immobilier SARL, entreprise ivoirienne de BTP, électrification et gestion immobilière basée à Abidjan (Yopougon Terminus 27).'
+  title: `Qui sommes-nous | ${settings.value.companyName}`,
+  description: settings.value.aboutHeroSubtitle
 })
 </script>
 
@@ -40,8 +49,9 @@ useSeoMeta({
     <!-- Header banner: Architectural Photography with Text Overlay -->
     <section class="relative min-h-[400px] lg:min-h-[500px] flex items-center">
       <!-- Background Image -->
-      <div class="absolute inset-0 z-0">
+      <div class="absolute inset-0 z-0 bg-neutral-100">
         <img
+          v-if="heroImage.url"
           :src="heroImage.url"
           :alt="heroImage.alt"
           class="w-full h-full object-cover"
@@ -54,10 +64,10 @@ useSeoMeta({
       <div class="relative z-10 w-full py-16 lg:py-20 text-center">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-3">
           <h1 class="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-neutral-950 drop-shadow-sm">
-            Bâtir l'Avenir d'Abidjan avec Rigueur & Méthode
+            {{ settings.aboutHeroTitle }}
           </h1>
           <p class="text-neutral-700 text-xs sm:text-sm max-w-2xl mx-auto leading-relaxed">
-            Découvrez les valeurs, la mission et l'équipe d'ingénieurs et techniciens qui constituent le socle de <strong>ML Immobilier SARL</strong>.
+            {{ settings.aboutHeroSubtitle }}
           </p>
         </div>
       </div>
@@ -72,33 +82,28 @@ useSeoMeta({
           </div>
 
           <h2 class="text-2xl sm:text-3xl font-black text-neutral-950 tracking-tight">
-            Un acteur d'ingénierie BTP et d'énergie à Abidjan
+            {{ settings.aboutPresentationTitle }}
           </h2>
 
           <p class="text-neutral-600 text-xs sm:text-sm leading-relaxed">
-            Créée pour répondre aux impératifs d'urbanisation, d'infrastructures électriques conformes et de sécurisation du foncier en Côte d'Ivoire, <strong>ML Immobilier SARL</strong> est une entreprise pluridisciplinaire enregistrée au registre du commerce d'Abidjan.
+            {{ settings.aboutPresentationText }}
           </p>
 
           <p class="text-neutral-600 text-xs sm:text-sm leading-relaxed">
-            Implantée à <strong>Yopougon (Terminus 27)</strong>, notre équipe regroupe des ingénieurs en génie civil, des techniciens électriciens habilités et des gestionnaires d'actifs. Nous garantissons une présence terrain continue, le contrôle des coûts et le respect scrupuleux des normes ivoiriennes.
+            {{ settings.aboutLocationText }}
           </p>
 
-          <div class="grid grid-cols-2 gap-3 pt-3 border-t border-neutral-200">
-            <div class="p-4 rounded-sm bg-neutral-50 border border-neutral-200">
-              <div class="text-2xl font-black text-neutral-950 tabular-nums">+{{ settings.statsProjects }}</div>
-              <div class="text-xs font-bold text-neutral-900 uppercase tracking-wider mt-0.5">Chantiers livrés</div>
-              <div class="text-[11px] text-neutral-500">Particuliers & Entreprises</div>
-            </div>
-            <div class="p-4 rounded-sm bg-neutral-50 border border-neutral-200">
-              <div class="text-2xl font-black text-neutral-950 tabular-nums">100%</div>
-              <div class="text-xs font-bold text-neutral-900 uppercase tracking-wider mt-0.5">Conformité</div>
-              <div class="text-[11px] text-neutral-500">Normes CIE & BTP</div>
+          <div v-if="aboutStats.length" class="grid grid-cols-2 gap-3 border-t border-neutral-200 pt-3">
+            <div v-for="stat in aboutStats" :key="stat.label" class="rounded-sm border border-neutral-200 bg-neutral-50 p-4">
+              <div class="tabular-nums text-2xl font-black text-neutral-950">{{ stat.prefix }}{{ stat.value }}{{ 'suffix' in stat ? stat.suffix : '' }}</div>
+              <div class="mt-0.5 text-xs font-bold uppercase tracking-wider text-neutral-900">{{ stat.label }}</div>
             </div>
           </div>
         </div>
 
         <div class="rounded-md overflow-hidden border border-neutral-200 bg-neutral-100 shadow-sm">
           <img
+            v-if="presentationImage.url"
             :src="presentationImage.url"
             :alt="presentationImage.alt"
             class="w-full h-[400px] object-cover"
@@ -107,57 +112,32 @@ useSeoMeta({
       </div>
     </section>
 
+    <section v-if="settings.aboutMissionTitle || settings.aboutMissionText" class="border-y border-neutral-200 bg-white py-16">
+      <div class="mx-auto max-w-4xl space-y-3 px-4 sm:px-6 lg:px-8">
+        <h2 class="text-2xl font-black tracking-tight text-neutral-950">{{ settings.aboutMissionTitle }}</h2>
+        <p class="text-sm leading-relaxed text-neutral-600">{{ settings.aboutMissionText }}</p>
+      </div>
+    </section>
+
     <!-- Nos Piliers -->
-    <section class="bg-neutral-50 border-y border-neutral-200 py-16">
+    <section v-if="aboutValues.length" class="bg-neutral-50 border-y border-neutral-200 py-16">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="max-w-2xl space-y-2 mb-10">
           <span class="text-neutral-500 font-bold text-xs uppercase tracking-widest">
-            Nos Piliers
+            {{ settings.aboutValuesTitle }}
           </span>
           <h2 class="text-2xl sm:text-3xl font-black text-neutral-950 tracking-tight">
-            4 Principes au Cœur de Chacun de nos Chantiers
+            {{ settings.aboutValuesSubtitle }}
           </h2>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="bg-white p-6 rounded-md border border-neutral-200 space-y-3 shadow-xs">
-            <div class="w-9 h-9 rounded-sm bg-neutral-100 text-neutral-900 flex items-center justify-center font-bold border border-neutral-200">
-              <UIcon name="i-heroicons-shield-check" class="w-5 h-5 text-emerald-600" />
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div v-for="value in aboutValues" :key="value.title" class="space-y-3 rounded-md border border-neutral-200 bg-white p-6 shadow-xs">
+            <div class="flex h-9 w-9 items-center justify-center rounded-sm border border-neutral-200 bg-neutral-100 font-bold text-neutral-900">
+              <UIcon :name="value.icon" class="h-5 w-5 text-emerald-600" />
             </div>
-            <h3 class="font-bold text-neutral-950 text-sm uppercase tracking-wider">Rigueur & Qualité</h3>
-            <p class="text-xs text-neutral-600 leading-relaxed">
-              Exigence absolue sur le calcul des charges, le ferraillage et la sécurité des installations haute tension.
-            </p>
-          </div>
-
-          <div class="bg-white p-6 rounded-md border border-neutral-200 space-y-3 shadow-xs">
-            <div class="w-9 h-9 rounded-sm bg-neutral-100 text-neutral-900 flex items-center justify-center font-bold border border-neutral-200">
-              <UIcon name="i-heroicons-document-text" class="w-5 h-5 text-neutral-700" />
-            </div>
-            <h3 class="font-bold text-neutral-950 text-sm uppercase tracking-wider">Transparence Totale</h3>
-            <p class="text-xs text-neutral-600 leading-relaxed">
-              Devis quantitatifs clairs sans frais dissimulés. Rapports d'avancement remis à chaque phase d'exécution.
-            </p>
-          </div>
-
-          <div class="bg-white p-6 rounded-md border border-neutral-200 space-y-3 shadow-xs">
-            <div class="w-9 h-9 rounded-sm bg-neutral-100 text-neutral-900 flex items-center justify-center font-bold border border-neutral-200">
-              <UIcon name="i-heroicons-clock" class="w-5 h-5 text-neutral-700" />
-            </div>
-            <h3 class="font-bold text-neutral-950 text-sm uppercase tracking-wider">Respect des Délais</h3>
-            <p class="text-xs text-neutral-600 leading-relaxed">
-              Planification rigoureuse et approvisionnement anticipé pour livrer les ouvrages aux dates contractuelles.
-            </p>
-          </div>
-
-          <div class="bg-white p-6 rounded-md border border-neutral-200 space-y-3 shadow-xs">
-            <div class="w-9 h-9 rounded-sm bg-neutral-100 text-neutral-900 flex items-center justify-center font-bold border border-neutral-200">
-              <UIcon name="i-heroicons-user" class="w-5 h-5 text-neutral-700" />
-            </div>
-            <h3 class="font-bold text-neutral-950 text-sm uppercase tracking-wider">Interlocuteur Dédié</h3>
-            <p class="text-xs text-neutral-600 leading-relaxed">
-              Un chargé d'affaires qui suit votre dossier de bout en bout et vous conseille avec précision.
-            </p>
+            <h3 class="text-sm font-bold uppercase tracking-wider text-neutral-950">{{ value.title }}</h3>
+            <p class="text-xs leading-relaxed text-neutral-600">{{ value.text }}</p>
           </div>
         </div>
       </div>
@@ -165,9 +145,9 @@ useSeoMeta({
 
     <!-- CTA Section -->
     <section class="max-w-4xl mx-auto px-4 text-center space-y-5">
-      <h2 class="text-2xl sm:text-3xl font-black text-neutral-950">Un projet à Abidjan ou en Côte d'Ivoire ?</h2>
+      <h2 class="text-2xl sm:text-3xl font-black text-neutral-950">{{ settings.aboutCtaTitle }}</h2>
       <p class="text-neutral-600 text-xs sm:text-sm max-w-xl mx-auto leading-relaxed">
-        Consultez nos équipes techniques à notre agence de Yopougon Terminus 27 ou transmettez votre cahier des charges en ligne.
+        {{ settings.aboutCtaText }}
       </p>
       <div class="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
         <NuxtLink
@@ -178,6 +158,7 @@ useSeoMeta({
           <span>Demander un devis gratuit</span>
         </NuxtLink>
         <a
+          v-if="settings.phone1"
           :href="`tel:${settings.phone1.replace(/\s+/g, '')}`"
           class="inline-flex items-center gap-2 bg-white hover:bg-neutral-50 text-neutral-800 border border-neutral-300 font-semibold text-xs uppercase tracking-wider px-6 py-3.5 rounded-sm transition-colors shadow-xs"
         >

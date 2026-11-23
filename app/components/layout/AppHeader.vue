@@ -50,6 +50,7 @@ const navLinks = [
         <!-- Desktop CTA & Phone -->
         <div class="hidden lg:flex items-center gap-5">
           <a
+            v-if="settings.phone1"
             :href="`tel:${settings.phone1.replace(/\s+/g, '')}`"
             class="text-[13px] text-neutral-600 hover:text-neutral-950 transition-colors duration-200 flex items-center gap-2 font-medium"
           >
@@ -114,6 +115,7 @@ const navLinks = [
           </NuxtLink>
 
           <a
+            v-if="settings.phone1"
             :href="`tel:${settings.phone1.replace(/\s+/g, '')}`"
             class="flex items-center justify-center gap-2 w-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-medium py-3 rounded-sm text-[13px] text-center border border-neutral-200 transition-all duration-200"
           >

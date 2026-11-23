@@ -1,5 +1,11 @@
 # 🔐 Système d'Authentification Admin - ML Immobilier SARL
 
+> **État actuel :** l'accès admin utilise Supabase Auth et un profil lié par
+> `admin_profiles.user_id`. Les étapes de migration `localStorage` ci-dessous
+> sont historiques ; elles ne décrivent pas la source de données actuelle.
+> Consulter [SUPABASE_READY.md](./SUPABASE_READY.md) pour la configuration
+> effective et les prérequis de déploiement.
+
 **Date** : 19 novembre 2026  
 **Type** : Admin uniquement - PAS d'inscription publique  
 **Sécurité** : Maximum

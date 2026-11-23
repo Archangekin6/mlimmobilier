@@ -8,13 +8,22 @@ definePageMeta({
 })
 
 const route = useRoute()
-const { quotes, updateQuoteStatus, deleteQuote } = useSiteData()
+const { quotes, updateQuoteStatus, deleteQuote, loadAdminData } = useSiteData()
 
 const activeFilter = ref<'all' | 'nouveau' | 'en_cours' | 'devis_envoye' | 'termine' | 'archive'>('all')
 const selectedQuote = ref<QuoteRequest | null>(null)
 const editingNotes = ref('')
+const errorMessage = ref('')
+const filters = ['all', 'nouveau', 'en_cours', 'devis_envoye', 'termine', 'archive'] as const
+const statuses = ['nouveau', 'en_cours', 'devis_envoye', 'termine', 'archive'] as const
 
-onMounted(() => {
+onMounted(async () => {
+  try {
+    await loadAdminData()
+  } catch (error) {
+    console.error('Erreur de chargement des demandes:', error)
+    errorMessage.value = 'Impossible de charger les demandes de devis.'
+  }
   if (route.query.id) {
     const q = quotes.value.find(item => item.id === route.query.id)
     if (q) {
@@ -33,27 +42,46 @@ const openQuoteDetail = (quote: QuoteRequest) => {
   editingNotes.value = quote.notes || ''
 }
 
-const saveQuoteNotes = () => {
+const saveQuoteNotes = async () => {
   if (selectedQuote.value) {
-    updateQuoteStatus(selectedQuote.value.id, selectedQuote.value.status, editingNotes.value)
-    selectedQuote.value.notes = editingNotes.value
-  }
-}
-
-const changeStatus = (status: QuoteRequest['status']) => {
-  if (selectedQuote.value) {
-    updateQuoteStatus(selectedQuote.value.id, status, editingNotes.value)
-    selectedQuote.value.status = status
-  }
-}
-
-const handleDelete = (id: string) => {
-  if (confirm('Confirmez-vous la suppression définitive de cette demande ?')) {
-    deleteQuote(id)
-    if (selectedQuote.value?.id === id) {
-      selectedQuote.value = null
+    try {
+      await updateQuoteStatus(selectedQuote.value.id, selectedQuote.value.status, editingNotes.value)
+      selectedQuote.value = quotes.value.find(quote => quote.id === selectedQuote.value?.id) || null
+    } catch (error) {
+      console.error('Erreur d’enregistrement des notes:', error)
+      errorMessage.value = 'Impossible d’enregistrer la note.'
     }
   }
+}
+
+const changeStatus = async (status: QuoteRequest['status']) => {
+  if (selectedQuote.value) {
+    const id = selectedQuote.value.id
+    try {
+      await updateQuoteStatus(id, status, editingNotes.value)
+      selectedQuote.value = quotes.value.find(quote => quote.id === id) || null
+    } catch (error) {
+      console.error('Erreur de mise à jour du statut:', error)
+      errorMessage.value = 'Impossible de modifier le statut.'
+    }
+  }
+}
+
+const handleDelete = async (id: string) => {
+  if (confirm('Confirmez-vous la suppression définitive de cette demande ?')) {
+    try {
+      await deleteQuote(id)
+      if (selectedQuote.value?.id === id) selectedQuote.value = null
+    } catch (error) {
+      console.error('Erreur de suppression de la demande:', error)
+      errorMessage.value = 'Impossible de supprimer la demande.'
+    }
+  }
+}
+
+const selectFilter = (status: string) => {
+  const filter = filters.find(item => item === status)
+  if (filter) activeFilter.value = filter
 }
 
 const formatStatus = (status: string) => {
@@ -80,6 +108,7 @@ useSeoMeta({
 
 <template>
   <div class="space-y-6">
+    <p v-if="errorMessage" class="border border-red-200 bg-red-50 p-3 text-xs text-red-800">{{ errorMessage }}</p>
     <!-- Header -->
     <div>
       <h2 class="text-xl sm:text-2xl font-black text-black tracking-tight">Demandes de Devis</h2>
@@ -89,10 +118,10 @@ useSeoMeta({
     <!-- Filter Pills -->
     <div class="flex flex-wrap items-center gap-1.5 bg-neutral-100 p-1 rounded-xs border border-neutral-200">
       <button
-        v-for="status in ['all', 'nouveau', 'en_cours', 'devis_envoye', 'termine', 'archive']"
+        v-for="status in filters"
         :key="status"
         type="button"
-        @click="activeFilter = status as any"
+        @click="selectFilter(status)"
         :class="activeFilter === status ? 'bg-black text-white font-bold' : 'text-neutral-600 hover:text-black'"
         class="px-3 py-1.5 rounded-xs text-xs uppercase tracking-wider transition-colors"
       >
@@ -223,10 +252,10 @@ useSeoMeta({
           <label class="block text-[11px] font-bold text-black uppercase tracking-wider">Statut du dossier :</label>
           <div class="grid grid-cols-3 gap-1.5">
             <button
-              v-for="st in ['nouveau', 'en_cours', 'devis_envoye', 'termine', 'archive']"
+              v-for="st in statuses"
               :key="st"
               type="button"
-              @click="changeStatus(st as any)"
+              @click="changeStatus(st)"
               :class="selectedQuote.status === st ? 'bg-black text-white font-bold' : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 border border-neutral-200'"
               class="px-2.5 py-1.5 text-[10px] uppercase tracking-wider font-semibold rounded-xs transition-colors text-center"
             >

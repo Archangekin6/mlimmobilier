@@ -4,12 +4,12 @@ import {
   verifyTurnstile,
   checkRateLimit,
   hashRateLimitIdentifier,
-  getClientIP,
   getUserAgent,
   sanitizeText,
   isValidEmail,
   isValidCIPhone
 } from '~~/server/utils/supabase'
+import { getQuoteRateLimitIdentifier } from '~~/server/utils/quote-rate-limit-session'
 
 const MAX_BODY_BYTES = 16 * 1024
 const allowedFields = new Set([
@@ -21,7 +21,6 @@ const allowedFields = new Set([
   'budget',
   'timeline',
   'description',
-  'honeypot',
   'turnstile_token'
 ])
 
@@ -94,13 +93,6 @@ export default defineEventHandler(async (event) => {
     const body = bodyValue
     if (Object.keys(body).some(field => !allowedFields.has(field))) {
       throw createError({ statusCode: 400, message: 'La demande contient des champs inattendus' })
-    }
-
-    if (typeof body.honeypot !== 'undefined' && typeof body.honeypot !== 'string') {
-      throw createError({ statusCode: 400, message: 'Champ de validation invalide' })
-    }
-    if (typeof body.honeypot === 'string' && body.honeypot.trim()) {
-      throw createError({ statusCode: 400, message: 'Soumission rejetée' })
     }
 
     const errors: string[] = []
@@ -179,16 +171,17 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, message: 'Le type de service est invalide' })
     }
 
-    const clientIP = getClientIP(event)
+    const visitorId = getQuoteRateLimitIdentifier(event)
     const userAgent = getUserAgent(event)
 
     const enforceRateLimit = async (
       action: string,
       maxCount: number,
       windowMinutes: number,
-      exceededMessage: string
+      exceededMessage: string,
+      identifier: string
     ) => {
-      const identifierHash = hashRateLimitIdentifier(clientIP, action)
+      const identifierHash = hashRateLimitIdentifier(identifier, action)
       const result = await checkRateLimit(identifierHash, action, maxCount, windowMinutes)
 
       if (!result.available) {
@@ -215,21 +208,8 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    await enforceRateLimit(
-      'quote_submission',
-      3,
-      60,
-      'Trop de demandes sur la dernière heure.'
-    )
-    await enforceRateLimit(
-      'quote_submission_daily',
-      10,
-      1440,
-      'La limite quotidienne de demandes est atteinte.'
-    )
-
     if (turnstileToken) {
-      const isTurnstileValid = await verifyTurnstile(turnstileToken, clientIP)
+      const isTurnstileValid = await verifyTurnstile(turnstileToken)
       if (!isTurnstileValid) {
         throw createError({
           statusCode: 403,
@@ -241,6 +221,27 @@ export default defineEventHandler(async (event) => {
         statusCode: 400,
         message: 'Vérification de sécurité requise'
       })
+    }
+
+    const rateLimitSubjects = [
+      { kind: 'visitor', identifier: visitorId },
+      { kind: 'phone', identifier: `phone:${phone.replace(/\D/g, '')}` }
+    ]
+    for (const { kind, identifier } of rateLimitSubjects) {
+      await enforceRateLimit(
+        `quote_submission_hourly_${kind}`,
+        3,
+        60,
+        'Trop de demandes sur la dernière heure.',
+        identifier
+      )
+      await enforceRateLimit(
+        `quote_submission_daily_${kind}`,
+        10,
+        1440,
+        'La limite quotidienne de demandes est atteinte.',
+        identifier
+      )
     }
 
     const quoteData = {

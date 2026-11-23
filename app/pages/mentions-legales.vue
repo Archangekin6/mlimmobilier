@@ -28,7 +28,7 @@ useSeoMeta({
           <span>1. Présentation de la Société</span>
         </h2>
         <ul class="space-y-1.5 text-xs text-neutral-700">
-          <li><strong>Dénomination sociale :</strong> ML IMMOBILIER SARL</li>
+          <li><strong>Dénomination sociale :</strong> {{ settings.companyName }}</li>
           <li><strong>Forme juridique :</strong> Société à Responsabilité Limitée (SARL)</li>
           <li><strong>Siège social :</strong> {{ settings.address }}, {{ settings.city }}</li>
           <li><strong>Téléphone :</strong> {{ settings.phone1 }} / {{ settings.phone2 }}</li>
@@ -45,7 +45,7 @@ useSeoMeta({
           <span>2. Hébergement & Réalisation</span>
         </h2>
         <p class="text-xs text-neutral-600 leading-relaxed">
-          Le site web de ML Immobilier SARL est développé sous architecture SSR avec <strong>Nuxt 4</strong> et hébergé sur les infrastructures de <strong>Vercel Inc.</strong>, avec stockage de données relationnelles PostgreSQL sous <strong>Supabase</strong>.
+          Le site web de {{ settings.companyName }} est développé sous architecture SSR avec <strong>Nuxt 4</strong> et hébergé sur <strong>Render</strong>, avec stockage de données relationnelles PostgreSQL sous <strong>Supabase</strong>.
         </p>
       </div>
 

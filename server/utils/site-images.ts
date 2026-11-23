@@ -1,9 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { extname } from 'node:path'
 import { createError, type H3Event } from 'h3'
-import { serverSupabaseServiceRole } from '#supabase/server'
-
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024
+import { supabaseAdmin } from '~~/server/utils/supabase'
+import { validateSiteImageFile, type MultipartImagePart } from '~~/server/utils/image-validation'
 
 const DEFAULT_SITE_IMAGES = [
   {
@@ -44,92 +42,6 @@ const DEFAULT_SITE_IMAGES = [
   }
 ] as const
 
-interface MultipartPart {
-  data: Buffer
-  name?: string
-  filename?: string
-  type?: string
-}
-
-interface ValidatedImage {
-  data: Buffer
-  contentType: string
-  extension: string
-}
-
-function detectImageType(data: Buffer): { contentType: string; extensions: string[] } | null {
-  if (
-    data.length >= 8 &&
-    data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
-  ) {
-    return { contentType: 'image/png', extensions: ['png'] }
-  }
-
-  if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
-    return { contentType: 'image/jpeg', extensions: ['jpg', 'jpeg'] }
-  }
-
-  if (
-    data.length >= 12 &&
-    data.toString('ascii', 0, 4) === 'RIFF' &&
-    data.toString('ascii', 8, 12) === 'WEBP'
-  ) {
-    return { contentType: 'image/webp', extensions: ['webp'] }
-  }
-
-  if (data.length >= 6 && ['GIF87a', 'GIF89a'].includes(data.toString('ascii', 0, 6))) {
-    return { contentType: 'image/gif', extensions: ['gif'] }
-  }
-
-  if (data.length >= 16 && data.toString('ascii', 4, 8) === 'ftyp') {
-    const brands: string[] = [data.toString('ascii', 8, 12)]
-    for (let offset = 16; offset + 4 <= Math.min(data.length, 64); offset += 4) {
-      brands.push(data.toString('ascii', offset, offset + 4))
-    }
-
-    if (brands.some(brand => brand === 'avif' || brand === 'avis')) {
-      return { contentType: 'image/avif', extensions: ['avif'] }
-    }
-  }
-
-  return null
-}
-
-export function validateSiteImageFile(file: MultipartPart): ValidatedImage {
-  if (!file.filename) {
-    throw createError({ statusCode: 400, statusMessage: 'Nom de fichier manquant' })
-  }
-
-  if (file.data.length === 0) {
-    throw createError({ statusCode: 400, statusMessage: 'Le fichier image est vide' })
-  }
-
-  if (file.data.length > MAX_IMAGE_SIZE) {
-    throw createError({ statusCode: 413, statusMessage: 'L’image dépasse la limite de 5 Mo' })
-  }
-
-  const detectedType = detectImageType(file.data)
-  const declaredType = file.type?.toLowerCase()
-  const extension = extname(file.filename).slice(1).toLowerCase()
-
-  if (
-    !detectedType ||
-    declaredType !== detectedType.contentType ||
-    !detectedType.extensions.includes(extension)
-  ) {
-    throw createError({
-      statusCode: 415,
-      statusMessage: 'Format d’image non autorisé ou incohérent'
-    })
-  }
-
-  return {
-    data: file.data,
-    contentType: detectedType.contentType,
-    extension
-  }
-}
-
 export async function getAdminSiteImage(event: H3Event, imageId: string) {
   if (!event.context.adminUser?.id) {
     throw createError({ statusCode: 401, statusMessage: 'Non authentifié' })
@@ -139,7 +51,7 @@ export async function getAdminSiteImage(event: H3Event, imageId: string) {
     throw createError({ statusCode: 400, statusMessage: 'Identifiant d’image invalide' })
   }
 
-  const supabase = serverSupabaseServiceRole(event)
+  const supabase = supabaseAdmin
   const { data: image, error } = await supabase
     .from('site_images')
     .select('*')
@@ -234,10 +146,51 @@ export async function resetAdminSiteImage(
   return { image: updatedImage, cleanupWarning }
 }
 
+export async function deleteAdminSiteImage(event: H3Event, imageId: string) {
+  const { supabase, image } = await getAdminSiteImage(event, imageId)
+  const { data: updatedImage, error: updateError } = await supabase
+    .from('site_images')
+    .update({ image_url: '', storage_path: '' })
+    .eq('id', image.id)
+    .eq('storage_path', image.storage_path)
+    .select('*')
+    .maybeSingle()
+
+  if (updateError) {
+    console.error('Erreur de suppression de la référence d’image:', updateError)
+    throw createError({ statusCode: 500, statusMessage: 'Impossible de supprimer l’image' })
+  }
+  if (!updatedImage) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'L’image a été modifiée entre-temps. Rechargez la page et réessayez.'
+    })
+  }
+
+  let cleanupWarning: string | undefined
+  if (image.storage_path) {
+    if (!isSafeStoragePath(image.storage_path)) {
+      cleanupWarning = 'Le fichier précédent n’a pas pu être supprimé automatiquement.'
+      console.error('Chemin Storage invalide ignoré lors de la suppression:', image.storage_path)
+    } else {
+      const { error: removeError } = await supabase.storage
+        .from('site-images')
+        .remove([image.storage_path])
+
+      if (removeError) {
+        cleanupWarning = 'Le fichier précédent n’a pas pu être supprimé automatiquement.'
+        console.error('Erreur de suppression de l’ancienne image:', removeError)
+      }
+    }
+  }
+
+  return { image: updatedImage, cleanupWarning }
+}
+
 export async function uploadAdminSiteImage(
   event: H3Event,
   imageId: string,
-  file: MultipartPart,
+  file: MultipartImagePart,
   altText?: string
 ) {
   const { supabase, image } = await getAdminSiteImage(event, imageId)

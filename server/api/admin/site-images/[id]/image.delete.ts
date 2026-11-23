@@ -1,4 +1,4 @@
-import { resetAdminSiteImage } from '~~/server/utils/site-images'
+import { deleteAdminSiteImage } from '~~/server/utils/site-images'
 
 export default defineEventHandler(async (event) => {
   const imageId = getRouterParam(event, 'id')
@@ -6,13 +6,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Identifiant d’image manquant' })
   }
 
-  const result = await resetAdminSiteImage(event, imageId, false)
+  const result = await deleteAdminSiteImage(event, imageId)
 
   return {
     success: true,
     message: result.cleanupWarning
-      ? `Image supprimée du stockage. ${result.cleanupWarning}`
-      : 'Image supprimée du stockage',
+      ? `Référence supprimée. ${result.cleanupWarning}`
+      : 'Image supprimée',
     image: result.image,
     cleanupWarning: result.cleanupWarning
   }

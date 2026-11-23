@@ -8,6 +8,7 @@ interface Props {
   previewSize?: 'small' | 'medium' | 'large'
   acceptedFormats?: string
   maxFileSize?: number // en MB
+  bucket?: 'site-images' | 'project-images'
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -15,11 +16,13 @@ const props = withDefaults(defineProps<Props>(), {
   hint: 'Téléchargez une image depuis votre ordinateur ou collez une URL',
   previewSize: 'medium',
   acceptedFormats: 'image/*',
-  maxFileSize: 5
+  maxFileSize: 5,
+  bucket: 'project-images'
 })
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
+  uploaded: [value: { url: string; storagePath: string }]
 }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -35,12 +38,7 @@ const previewSizeClasses = {
   large: 'w-full h-64'
 }
 
-const handleFileSelect = async (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  
-  if (!file) return
-
+const uploadFile = async (file: File) => {
   // Validation
   if (!file.type.startsWith('image/')) {
     uploadError.value = 'Veuillez sélectionner une image valide'
@@ -58,33 +56,34 @@ const handleFileSelect = async (event: Event) => {
   try {
     const formData = new FormData()
     formData.append('file', file)
-
-    const response = await fetch('/api/upload', {
+    formData.append('bucket', props.bucket)
+    const response = await $fetch<{ url: string; storagePath: string }>('/api/admin/upload', {
       method: 'POST',
       body: formData
     })
-
-    if (!response.ok) {
-      throw new Error('Erreur lors de l\'upload')
-    }
-
-    const data = await response.json()
-    emit('update:modelValue', data.url)
+    emit('update:modelValue', response.url)
+    emit('uploaded', { url: response.url, storagePath: response.storagePath })
     uploadSuccess.value = true
-    urlInput.value = data.url
+    urlInput.value = response.url
     
     setTimeout(() => {
       uploadSuccess.value = false
     }, 3000)
-  } catch (error) {
+  } catch (error: unknown) {
     uploadError.value = 'Erreur lors du téléchargement de l\'image'
     console.error(error)
   } finally {
     isUploading.value = false
-    if (fileInput.value) {
-      fileInput.value.value = ''
-    }
   }
+}
+
+const handleFileSelect = async (event: Event) => {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+  const file = target.files?.[0]
+  if (!file) return
+  await uploadFile(file)
+  target.value = ''
 }
 
 const handleUrlChange = () => {
@@ -169,14 +168,9 @@ const previewClasses = computed(() => previewSizeClasses[props.previewSize])
       <div
         @click="triggerFileInput"
         @dragover.prevent="true"
-        @drop.prevent="(e) => {
-          const dataTransfer = e.dataTransfer
-          if (!dataTransfer) return
-          const files = dataTransfer.files
-          if (files.length > 0) {
-            const fakeEvent = { target: { files } } as any
-            handleFileSelect(fakeEvent)
-          }
+        @drop.prevent="(event) => {
+          const file = event.dataTransfer?.files[0]
+          if (file) uploadFile(file)
         }"
         class="border-2 border-dashed border-neutral-300 hover:border-neutral-400 rounded-xs p-6 text-center cursor-pointer transition-colors bg-neutral-50 hover:bg-neutral-100"
       >

@@ -16,7 +16,8 @@ export default defineNuxtConfig({
 
   supabase: {
     redirect: false,
-    useSsrCookies: true
+    useSsrCookies: true,
+    types: '~/types/database.types.ts'
   },
 
   runtimeConfig: {
@@ -44,7 +45,7 @@ export default defineNuxtConfig({
           }
 
           if (typeof origExternal === 'function') {
-            return (origExternal as any)(id, ...args)
+            return origExternal(id, ...args)
           }
 
           return false

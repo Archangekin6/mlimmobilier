@@ -26,6 +26,9 @@ const successMessage = ref<string | null>(null)
 const errorMessage = ref<string | null>(null)
 const filterPage = ref<string>('all')
 
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback
+
 // Load images on mount
 onMounted(async () => {
   await fetchSiteImages()
@@ -128,8 +131,8 @@ const handleUpload = async () => {
     } else {
       errorMessage.value = result.message
     }
-  } catch (err: any) {
-    errorMessage.value = err.message || 'Erreur lors du téléchargement'
+  } catch (err: unknown) {
+    errorMessage.value = getErrorMessage(err, 'Erreur lors du téléchargement')
   } finally {
     uploadProgress.value = false
   }
@@ -164,8 +167,8 @@ const handleReset = async (imageId: string) => {
     } else {
       errorMessage.value = result.message
     }
-  } catch (err: any) {
-    errorMessage.value = err.message || 'Erreur lors de la réinitialisation'
+  } catch (err: unknown) {
+    errorMessage.value = getErrorMessage(err, 'Erreur lors de la réinitialisation')
   } finally {
     uploadProgress.value = false
   }
@@ -188,8 +191,8 @@ const saveAltText = async (imageId: string) => {
     } else {
       errorMessage.value = result.message
     }
-  } catch (err: any) {
-    errorMessage.value = err.message || 'Erreur lors de la mise à jour'
+  } catch (err: unknown) {
+    errorMessage.value = getErrorMessage(err, 'Erreur lors de la mise à jour')
   } finally {
     uploadProgress.value = false
   }

@@ -1,5 +1,12 @@
 # Architecture Supabase - ML Immobilier SARL
 
+> **Document historique.** Les sections ci-dessous décrivent l'état antérieur
+> à la connexion Supabase et ne sont pas la source de vérité pour le code actuel.
+> Consulter [SUPABASE_READY.md](./SUPABASE_READY.md) et les migrations
+> `supabase/migrations/` pour l'architecture et les opérations de déploiement
+> actuelles. Ne pas exécuter les anciens exemples SQL de ce document sans les
+> comparer au schéma distant.
+
 ## 📋 Audit du Projet
 
 ### Fonctionnalités Identifiées

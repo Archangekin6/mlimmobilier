@@ -10,6 +10,7 @@ const { settings, saveSettings } = useSiteData()
 
 const form = ref({ ...settings.value })
 const savedSuccess = ref(false)
+const savedError = ref('')
 
 // Logo upload
 const logoTab = ref<'url' | 'upload'>('url')
@@ -43,17 +44,11 @@ const handleLogoUpload = async (event: Event) => {
   try {
     const formData = new FormData()
     formData.append('file', file)
-
-    const response = await fetch('/api/upload', {
+    formData.append('bucket', 'site-images')
+    const data = await $fetch<{ url: string }>('/api/admin/upload', {
       method: 'POST',
       body: formData
     })
-
-    if (!response.ok) {
-      throw new Error('Erreur lors de l\'upload')
-    }
-
-    const data = await response.json()
     form.value.logoUrl = data.url
     logoUploadSuccess.value = true
     
@@ -72,15 +67,20 @@ const handleLogoUpload = async (event: Event) => {
 }
 
 const handleSave = () => {
-  saveSettings(form.value)
-  savedSuccess.value = true
-  setTimeout(() => {
-    savedSuccess.value = false
-  }, 3000)
+  savedError.value = ''
+  void saveSettings(form.value).then(() => {
+    savedSuccess.value = true
+    setTimeout(() => {
+      savedSuccess.value = false
+    }, 3000)
+  }).catch((error: unknown) => {
+    console.error('Erreur d’enregistrement des paramètres:', error)
+    savedError.value = 'Impossible d’enregistrer les paramètres. Vérifiez la connexion puis réessayez.'
+  })
 }
 
 useSeoMeta({
-  title: 'Réglages du Site | Admin ML Immobilier SARL',
+  title: 'Coordonnées & Contact | Admin ML Immobilier SARL',
   robots: 'noindex, nofollow'
 })
 </script>
@@ -90,9 +90,9 @@ useSeoMeta({
     <!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
-        <h2 class="text-xl sm:text-2xl font-black text-black tracking-tight">Paramètres du Site</h2>
+        <h2 class="text-xl sm:text-2xl font-black text-black tracking-tight">Coordonnées & Contact</h2>
         <p class="text-xs text-neutral-500 mt-0.5">
-          Coordonnées, en-têtes, réseaux sociaux et contenus de référence.
+        Identité, coordonnées, logo et réseaux sociaux de l’entreprise.
         </p>
       </div>
 
@@ -110,6 +110,9 @@ useSeoMeta({
     <div v-if="savedSuccess" class="p-3.5 rounded-xs bg-black text-white text-xs font-bold flex items-center gap-2 border border-neutral-800">
       <UIcon name="i-heroicons-check-circle" class="w-4 h-4 text-white" />
       <span>Modifications enregistrées et immédiatement appliquées.</span>
+    </div>
+    <div v-if="savedError" class="p-3.5 rounded-xs bg-red-50 text-red-800 text-xs border border-red-200">
+      {{ savedError }}
     </div>
 
     <form @submit.prevent="handleSave" class="space-y-6">
@@ -309,59 +312,7 @@ useSeoMeta({
         </div>
       </div>
 
-      <!-- 2. ACCROCHE HERO -->
-      <div class="bg-white border border-neutral-200 rounded-xs p-6 space-y-4">
-        <h3 class="text-xs font-bold text-black uppercase tracking-wider border-b border-neutral-200 pb-2 flex items-center gap-2">
-          <UIcon name="i-heroicons-sparkles" class="w-4 h-4 text-black" />
-          <span>Accroche de la Page d'Accueil</span>
-        </h3>
-
-        <div>
-          <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Titre principal (H1)</label>
-          <input
-            v-model="form.heroTitle"
-            type="text"
-            class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
-          />
-        </div>
-
-        <div>
-          <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Sous-titre</label>
-          <textarea
-            v-model="form.heroSubtitle"
-            rows="2"
-            class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
-          ></textarea>
-        </div>
-
-        <div>
-          <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Libellé du bouton principal</label>
-          <input
-            v-model="form.heroCtaText"
-            type="text"
-            class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
-          />
-        </div>
-
-        <!-- Banner Notice -->
-        <div class="pt-3 border-t border-neutral-100 space-y-2">
-          <div class="flex items-center justify-between">
-            <label class="block text-[11px] font-bold text-black uppercase tracking-wider">Bandeau d'alerte supérieur</label>
-            <label class="flex items-center gap-2 text-xs text-neutral-700 cursor-pointer">
-              <input type="checkbox" v-model="form.showNotice" class="rounded-none text-black" />
-              <span>Afficher le bandeau</span>
-            </label>
-          </div>
-          <input
-            v-model="form.bannerNotice"
-            type="text"
-            placeholder="Texte du message informatif..."
-            class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
-          />
-        </div>
-      </div>
-
-      <!-- 3. RESEAUX SOCIAUX -->
+      <!-- RESEAUX SOCIAUX -->
       <div class="bg-white border border-neutral-200 rounded-xs p-6 space-y-4">
         <h3 class="text-xs font-bold text-black uppercase tracking-wider border-b border-neutral-200 pb-2 flex items-center gap-2">
           <UIcon name="i-heroicons-share" class="w-4 h-4 text-black" />

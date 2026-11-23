@@ -144,17 +144,16 @@ Puis :
 
 ## Notes importantes
 
-- Le logo est stocké dans le **localStorage** du navigateur tant qu'une vraie base de données n'est pas configurée
-- La modification du logo est **immédiate** et **sans rechargement de page**
+- Le logo est stocké dans le bucket Supabase Storage `site-images`; son URL est persistée dans `site_settings`
+- La modification est enregistrée par une API admin sécurisée
 - Si aucune URL n'est fournie, une icône par défaut s'affiche
 - Le logo s'adapte automatiquement aux différentes tailles d'écran (responsive)
 
-## Prochaines étapes suggérées
+## Pistes futures
 
-1. **Upload de fichier** : Ajouter la possibilité d'uploader directement le logo depuis l'admin (au lieu de saisir une URL)
-2. **Gestion des fichiers** : Intégrer un système de stockage de fichiers (Supabase Storage, Cloudinary, etc.)
-3. **Multiple formats** : Permettre différents logos (desktop, mobile, favicon)
-4. **Optimisation** : Compression automatique des images
+Les uploads et la persistance Supabase sont en place. D'éventuelles évolutions
+comme des variantes responsive ou la compression d'images restent hors du
+présent périmètre.
 
 ---
 

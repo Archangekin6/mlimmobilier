@@ -1,21 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useSiteData } from '~/composables/useSiteData'
 import { useSiteImages } from '~/composables/useSiteImages'
 
-const { settings, publishedProjects } = useSiteData()
-const { fetchSiteImages, getImageBySection } = useSiteImages()
-
-// Fetch site images on mount
-onMounted(async () => {
-  await fetchSiteImages()
-})
+const { settings, publishedProjects, publishedTestimonials, publishedServices } = useSiteData()
+const { getImageBySection } = useSiteImages()
+const mapQuery = computed(() => [settings.value.address, settings.value.city].filter(Boolean).join(' '))
 
 // Get hero background image
 const heroImage = computed(() => {
   const img = getImageBySection('home', 'hero_background')
   return {
-    url: img?.image_url || 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=2000&q=80',
+    url: img?.image_url || '',
     alt: img?.alt_text || 'Architecture contemporaine ML Immobilier'
   }
 })
@@ -29,36 +25,16 @@ const filteredProjects = computed(() => {
   return publishedProjects.value.filter(p => p.category === activeCategory.value).slice(0, 6)
 })
 
-const services = [
-  {
-    id: 'btp',
-    title: 'BTP & Construction Générale',
-    badge: 'Pôle Construction',
-    icon: 'i-heroicons-wrench-screwdriver',
-    description: 'De l’étude géotechnique aux finitions de standing. Réalisation d’immeubles d’habitation, villas modernes, travaux de génie civil et rénovation lourde.',
-    points: ['Gros œuvre & béton armé certifié', 'Rénovation & second œuvre soigné', 'Suivi de chantier rigoureux & délais garantis']
-  },
-  {
-    id: 'electrification',
-    title: 'Électrification HTA / BTA & Énergie',
-    badge: 'Pôle Énergie',
-    icon: 'i-heroicons-bolt',
-    description: 'Conception et déploiement de réseaux électriques sécurisés conformes aux normes CIE. Postes transformateurs, électrification de lotissements et solaire.',
-    points: ['Postes HTA/BTA & armoires TGBT', 'Électrification lotissements & voiries', 'Solutions solaires & groupes électrogènes']
-  },
-  {
-    id: 'gestion',
-    title: 'Gestion & Valorisation Immobilière',
-    badge: 'Pôle Patrimoine',
-    icon: 'i-heroicons-key',
-    description: 'Optimisez la rentabilité et la longévité de vos biens à Abidjan. Gestion locative intégrale, recouvrement rigoureux et maintenance technique préventive.',
-    points: ['Sélection rigoureuse des locataires', 'Taux de recouvrement des loyers > 99%', 'Entretien & valorisation du bâti']
-  }
-]
+const publicStats = computed(() => [
+  { value: settings.value.statsYears, label: 'Ans d’expérience', prefix: '+', suffix: '' },
+  { value: settings.value.statsProjects, label: 'Chantiers livrés', prefix: '+', suffix: '' },
+  { value: settings.value.statsClients, label: 'Clients accompagnés', prefix: '+', suffix: '' },
+  { value: settings.value.statsSatisfaction, label: 'Clients satisfaits', prefix: '', suffix: '%' }
+].filter(stat => stat.value !== null))
 
 useSeoMeta({
-  title: 'ML Immobilier SARL | BTP, Électrification & Gestion Immobilière à Abidjan',
-  description: 'ML Immobilier SARL à Abidjan (Yopougon Terminus 27). Ingénierie BTP, réseaux d’électrification et gestion de patrimoine.'
+  title: `${settings.value.companyName} | BTP, Électrification & Gestion Immobilière`,
+  description: `${settings.value.companyName} : ingénierie BTP, réseaux d’électrification et gestion de patrimoine.`
 })
 </script>
 
@@ -73,8 +49,9 @@ useSeoMeta({
     <!-- HERO SECTION: Architectural Photography with Content Overlay -->
     <section class="relative min-h-[600px] lg:min-h-[700px] flex items-center">
       <!-- Background Image -->
-      <div class="absolute inset-0 z-0">
+      <div class="absolute inset-0 z-0 bg-neutral-900">
         <img
+          v-if="heroImage.url"
           :src="heroImage.url"
           :alt="heroImage.alt"
           class="w-full h-full object-cover"
@@ -90,7 +67,7 @@ useSeoMeta({
             <!-- Badge -->
             <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-sm bg-white/95 backdrop-blur-sm border border-white/20 text-neutral-900 text-xs font-semibold uppercase tracking-wider mb-6 shadow-lg">
               <UIcon name="i-heroicons-building-office-2" class="w-3.5 h-3.5 text-neutral-700" />
-              <span>Ingénierie BTP & Énergie à Abidjan</span>
+              <span>Ingénierie BTP & Énergie{{ settings.city ? ` à ${settings.city}` : '' }}</span>
             </div>
 
             <!-- Title -->
@@ -118,27 +95,15 @@ useSeoMeta({
                 class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white font-semibold text-sm px-7 py-4 rounded-sm border border-white/30 transition-all"
               >
                 <UIcon name="i-heroicons-eye" class="w-4 h-4" />
-                <span>Nos réalisations</span>
+                <span>{{ settings.heroSecondaryCtaText }}</span>
               </NuxtLink>
             </div>
 
             <!-- Trust Metrics -->
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
-              <div class="backdrop-blur-sm bg-white/10 rounded-sm px-4 py-3 border border-white/20">
-                <div class="text-3xl font-black text-white tabular-nums mb-1">+{{ settings.statsYears }}</div>
-                <div class="text-xs text-white/80 font-medium uppercase tracking-wide">Ans d'expérience</div>
-              </div>
-              <div class="backdrop-blur-sm bg-white/10 rounded-sm px-4 py-3 border border-white/20">
-                <div class="text-3xl font-black text-white tabular-nums mb-1">+{{ settings.statsProjects }}</div>
-                <div class="text-xs text-white/80 font-medium uppercase tracking-wide">Chantiers livrés</div>
-              </div>
-              <div class="backdrop-blur-sm bg-white/10 rounded-sm px-4 py-3 border border-white/20">
-                <div class="text-3xl font-black text-white tabular-nums mb-1">{{ settings.statsSatisfaction }}%</div>
-                <div class="text-xs text-white/80 font-medium uppercase tracking-wide">Clients satisfaits</div>
-              </div>
-              <div class="backdrop-blur-sm bg-white/10 rounded-sm px-4 py-3 border border-white/20">
-                <div class="text-3xl font-black text-white tabular-nums mb-1">100%</div>
-                <div class="text-xs text-white/80 font-medium uppercase tracking-wide">Normes CIE & BTP</div>
+            <div v-if="publicStats.length" class="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
+              <div v-for="stat in publicStats" :key="stat.label" class="backdrop-blur-sm bg-white/10 rounded-sm px-4 py-3 border border-white/20">
+                <div class="text-3xl font-black text-white tabular-nums mb-1">{{ stat.prefix }}{{ stat.value }}{{ stat.suffix }}</div>
+                <div class="text-xs text-white/80 font-medium uppercase tracking-wide">{{ stat.label }}</div>
               </div>
             </div>
           </div>
@@ -154,7 +119,7 @@ useSeoMeta({
     </section>
 
     <!-- LES 3 SERVICES CLES -->
-    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section v-if="publishedServices.length" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="max-w-3xl space-y-2 mb-12">
         <span class="text-neutral-500 font-bold text-xs uppercase tracking-widest">
           Expertises
@@ -163,14 +128,14 @@ useSeoMeta({
           Domaines d'Intervention
         </h2>
         <p class="text-neutral-600 text-sm leading-relaxed">
-          Une synergie de compétences pour concevoir vos ouvrages, assurer vos raccordements haute/basse tension et pérenniser vos actifs immobiliers.
+          {{ settings.homeDescription }}
         </p>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div
-          v-for="service in services"
-          :key="service.id"
+          v-for="service in publishedServices"
+          :key="service.slug"
           class="bg-white rounded-md p-6 border border-neutral-200 hover:border-neutral-400 hover:shadow-md transition-all flex flex-col justify-between"
         >
           <div class="space-y-4">
@@ -184,15 +149,15 @@ useSeoMeta({
             </div>
 
             <h3 class="text-lg font-bold text-neutral-950">
-              {{ service.title }}
+              {{ service.homeTitle }}
             </h3>
 
             <p class="text-xs text-neutral-600 leading-relaxed">
-              {{ service.description }}
+              {{ service.homeDescription }}
             </p>
 
             <ul class="space-y-2 pt-2 border-t border-neutral-100">
-              <li v-for="(point, idx) in service.points" :key="idx" class="flex items-center gap-2 text-xs text-neutral-700">
+              <li v-for="(point, idx) in service.homeHighlights" :key="idx" class="flex items-center gap-2 text-xs text-neutral-700">
                 <UIcon name="i-heroicons-check" class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                 <span>{{ point }}</span>
               </li>
@@ -201,10 +166,10 @@ useSeoMeta({
 
           <div class="pt-6">
             <NuxtLink
-              :to="`/contact?service=${service.id}`"
+              :to="`/contact?service=${service.slug}`"
               class="w-full inline-flex items-center justify-center gap-2 py-2.5 px-3 rounded-sm text-xs font-semibold uppercase tracking-wider bg-neutral-900 hover:bg-black text-white transition-colors shadow-xs"
             >
-              <span>Demander un devis {{ service.id.toUpperCase() }}</span>
+              <span>Demander un devis {{ service.slug.toUpperCase() }}</span>
               <UIcon name="i-heroicons-arrow-right" class="w-3.5 h-3.5" />
             </NuxtLink>
           </div>
@@ -329,7 +294,7 @@ useSeoMeta({
     </section>
 
     <!-- SECTION TEMOIGNAGES -->
-    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section v-if="publishedTestimonials.length" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="max-w-2xl space-y-2 mb-8">
         <span class="text-neutral-500 font-bold text-xs uppercase tracking-widest">
           Avis Clients
@@ -340,65 +305,36 @@ useSeoMeta({
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="bg-white rounded-md p-6 border border-neutral-200 hover:border-neutral-300 transition-all shadow-xs space-y-4 flex flex-col justify-between">
+        <article
+          v-for="testimonial in publishedTestimonials"
+          :key="testimonial.id"
+          class="bg-white rounded-md p-6 border border-neutral-200 hover:border-neutral-300 transition-all shadow-xs space-y-4 flex flex-col justify-between"
+        >
           <div class="space-y-3">
-            <div class="flex items-center gap-1 text-amber-500">
-              <UIcon v-for="i in 5" :key="i" name="i-heroicons-star" class="w-4 h-4 fill-amber-400 text-amber-400" />
+            <div v-if="testimonial.rating" class="flex items-center gap-1 text-amber-500" :aria-label="`Note : ${testimonial.rating} sur 5`">
+              <UIcon
+                v-for="star in 5"
+                :key="star"
+                name="i-heroicons-star"
+                class="w-4 h-4"
+                :class="star <= testimonial.rating ? 'fill-amber-400 text-amber-400' : 'text-neutral-300'"
+              />
             </div>
-            <p class="text-xs text-neutral-700 leading-relaxed italic">
-              « Le chantier de notre villa duplex à Cocody Riviera a été livré avec 2 semaines d'avance sur le planning contractuel. Rigueur technique et transparence sur les facturations. »
-            </p>
+            <p class="text-xs text-neutral-700 leading-relaxed italic">« {{ testimonial.testimonial_text }} »</p>
           </div>
           <div class="pt-3 border-t border-neutral-100 flex items-center gap-2.5">
-            <div class="w-8 h-8 rounded-sm bg-neutral-900 text-white font-bold text-xs flex items-center justify-center shrink-0">
-              KA
+            <img v-if="testimonial.photo_url" :src="testimonial.photo_url" :alt="testimonial.client_name" class="w-8 h-8 rounded-sm object-cover">
+            <div v-else class="w-8 h-8 rounded-sm bg-neutral-900 text-white font-bold text-xs flex items-center justify-center shrink-0">
+              {{ testimonial.client_name.slice(0, 2).toUpperCase() }}
             </div>
             <div>
-              <div class="text-xs font-bold text-neutral-950">M. Kouamé A.</div>
-              <div class="text-[10px] text-neutral-500 uppercase tracking-wider">Propriétaire • Cocody</div>
+              <div class="text-xs font-bold text-neutral-950">{{ testimonial.client_name }}</div>
+              <div class="text-[10px] text-neutral-500 uppercase tracking-wider">
+                {{ [testimonial.client_function, testimonial.client_company, testimonial.client_location].filter(Boolean).join(' • ') }}
+              </div>
             </div>
           </div>
-        </div>
-
-        <div class="bg-white rounded-md p-6 border border-neutral-200 hover:border-neutral-300 transition-all shadow-xs space-y-4 flex flex-col justify-between">
-          <div class="space-y-3">
-            <div class="flex items-center gap-1 text-amber-500">
-              <UIcon v-for="i in 5" :key="i" name="i-heroicons-star" class="w-4 h-4 fill-amber-400 text-amber-400" />
-            </div>
-            <p class="text-xs text-neutral-700 leading-relaxed italic">
-              « Travaux d'électrification HTA/BTA de notre lotissement à Songon impeccables. Conformité CIE validée sans aucune réserve dès la première inspection technique. »
-            </p>
-          </div>
-          <div class="pt-3 border-t border-neutral-100 flex items-center gap-2.5">
-            <div class="w-8 h-8 rounded-sm bg-neutral-900 text-white font-bold text-xs flex items-center justify-center shrink-0">
-              OT
-            </div>
-            <div>
-              <div class="text-xs font-bold text-neutral-950">Dr. Ouattara T.</div>
-              <div class="text-[10px] text-neutral-500 uppercase tracking-wider">Promoteur • Songon</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="bg-white rounded-md p-6 border border-neutral-200 hover:border-neutral-300 transition-all shadow-xs space-y-4 flex flex-col justify-between">
-          <div class="space-y-3">
-            <div class="flex items-center gap-1 text-amber-500">
-              <UIcon v-for="i in 5" :key="i" name="i-heroicons-star" class="w-4 h-4 fill-amber-400 text-amber-400" />
-            </div>
-            <p class="text-xs text-neutral-700 leading-relaxed italic">
-              « Vivant à l'étranger, la gestion de mon immeuble de 8 appartements à Yopougon était complexe. Avec ML Immobilier, les loyers sont virés ponctuellement avec compte rendu clair. »
-            </p>
-          </div>
-          <div class="pt-3 border-t border-neutral-100 flex items-center gap-2.5">
-            <div class="w-8 h-8 rounded-sm bg-neutral-900 text-white font-bold text-xs flex items-center justify-center shrink-0">
-              SB
-            </div>
-            <div>
-              <div class="text-xs font-bold text-neutral-950">Mme Soro B.</div>
-              <div class="text-[10px] text-neutral-500 uppercase tracking-wider">Investisseuse • Yopougon</div>
-            </div>
-          </div>
-        </div>
+        </article>
       </div>
     </section>
 
@@ -460,17 +396,17 @@ useSeoMeta({
             <div class="p-4 rounded-sm bg-neutral-50 border border-neutral-200 space-y-2.5 text-xs">
               <div class="flex items-center justify-between text-neutral-600">
                 <span>Siège social :</span>
-                <span class="text-neutral-950 font-medium">Yopougon Terminus 27</span>
+                <span class="text-neutral-950 font-medium">{{ [settings.address, settings.city].filter(Boolean).join(', ') }}</span>
               </div>
-              <div class="flex items-center justify-between text-neutral-600">
+              <div v-if="settings.phone1" class="flex items-center justify-between text-neutral-600">
                 <span>Téléphone :</span>
                 <a :href="`tel:${settings.phone1.replace(/\s+/g, '')}`" class="text-neutral-950 hover:underline font-mono font-semibold">
                   {{ settings.phone1 }}
                 </a>
               </div>
-              <div class="flex items-center justify-between text-neutral-600">
+              <div v-if="settings.whatsapp" class="flex items-center justify-between text-neutral-600">
                 <span>WhatsApp :</span>
-                <span class="text-emerald-700 font-mono font-semibold">+{{ settings.whatsapp }}</span>
+                <span class="text-emerald-700 font-mono font-semibold">{{ settings.whatsapp }}</span>
               </div>
             </div>
 
@@ -487,7 +423,7 @@ useSeoMeta({
     </section>
 
     <!-- SECTION LOCALISATION -->
-    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section v-if="mapQuery" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="bg-white rounded-md p-8 sm:p-10 border border-neutral-200 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center shadow-xs">
         <div class="lg:col-span-5 space-y-4">
           <span class="text-neutral-500 font-bold text-xs uppercase tracking-widest">
@@ -497,19 +433,19 @@ useSeoMeta({
             Siège & Accueil Technique
           </h2>
           <p class="text-neutral-600 text-xs leading-relaxed">
-            Situés à <strong>Yopougon, Terminus 27</strong>, nos bureaux accueillent maîtres d'ouvrage, propriétaires et partenaires pour l'étude de plans, devis et contrats.
+            Retrouvez-nous à <strong>{{ mapQuery }}</strong> pour l'étude de plans, devis et contrats.
           </p>
 
           <div class="space-y-2.5 pt-2 text-xs text-neutral-700">
             <div class="flex items-center gap-2.5">
               <UIcon name="i-heroicons-map-pin" class="w-4 h-4 text-neutral-900 shrink-0" />
-              <span><strong>Adresse :</strong> {{ settings.address }}, {{ settings.city }}</span>
+              <span><strong>Adresse :</strong> {{ mapQuery }}</span>
             </div>
-            <div class="flex items-center gap-2.5">
+            <div v-if="settings.workingHours" class="flex items-center gap-2.5">
               <UIcon name="i-heroicons-clock" class="w-4 h-4 text-neutral-900 shrink-0" />
               <span><strong>Horaires :</strong> {{ settings.workingHours }}</span>
             </div>
-            <div class="flex items-center gap-2.5">
+            <div v-if="settings.phone1" class="flex items-center gap-2.5">
               <UIcon name="i-heroicons-phone" class="w-4 h-4 text-neutral-900 shrink-0" />
               <span><strong>Contact :</strong> {{ settings.phone1 }}</span>
             </div>
@@ -523,7 +459,7 @@ useSeoMeta({
               Accès & Rendez-vous
             </h3>
             <p class="text-xs text-neutral-600">
-              Stationnement accessible à proximité immédiate du Terminus 27. Entretien technique possible sur rendez-vous ou sans interruption aux horaires de bureau.
+              Contactez l’équipe pour organiser un rendez-vous sur place.
             </p>
           </div>
 
@@ -540,7 +476,7 @@ useSeoMeta({
 
           <div class="pt-2 flex flex-col sm:flex-row items-center gap-3">
             <a
-              :href="`https://maps.google.com/?q=${encodeURIComponent('Yopougon Terminus 27 Abidjan Côte d Ivoire')}`"
+              :href="`https://maps.google.com/?q=${encodeURIComponent(mapQuery)}`"
               target="_blank"
               rel="noopener noreferrer"
               class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-neutral-900 hover:bg-black text-white font-semibold text-xs uppercase tracking-wider px-4 py-2.5 rounded-sm transition-colors shadow-xs"

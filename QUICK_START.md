@@ -131,16 +131,16 @@ Pour plus de détails, lisez :
 A: Utilisez le composant ImageUpload dans Admin → Réglages ou Réalisations
 
 **Q: Où sont stockées les images ?**
-A: Dans le dossier `public/uploads/`
+A: Les fichiers administratifs sont dans les buckets Supabase Storage `site-images` et `project-images`.
 
 **Q: Puis-je utiliser une URL externe ?**
 A: Oui ! Cliquez sur l'onglet "Lien URL" et collez le lien
 
 **Q: Les images sont supprimées en arrêtant le serveur ?**
-A: Non, elles restent dans `public/uploads/`
+A: Non, elles restent dans Supabase Storage.
 
 **Q: Comment héberger en production ?**
-A: Utilisez un service cloud (Supabase, Cloudinary, AWS S3, etc.)
+A: Configurez les variables Supabase et les buckets requis ; voir `SUPABASE_READY.md`.
 
 ---
 

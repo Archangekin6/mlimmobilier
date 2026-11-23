@@ -11,18 +11,22 @@ const { projects, addProject, updateProject, deleteProject, toggleProjectPublish
 const isModalOpen = ref(false)
 const isEditing = ref(false)
 const currentEditId = ref('')
+const saveError = ref('')
 
 const projectForm = ref({
   title: '',
   category: 'btp' as Project['category'],
   location: '',
-  date: '2026',
+  date: '',
   description: '',
   fullDescription: '',
   client: '',
   imageUrl: '',
+  imageStoragePath: '',
+  galleryImages: [] as Array<{ imageUrl: string; storagePath: string }>,
   published: true,
-  featured: false
+  featured: false,
+  displayOrder: 0
 })
 
 const openAddModal = () => {
@@ -32,13 +36,16 @@ const openAddModal = () => {
     title: '',
     category: 'btp',
     location: '',
-    date: new Date().getFullYear().toString(),
+    date: '',
     description: '',
     fullDescription: '',
     client: '',
-    imageUrl: 'https://images.unsplash.com/photo-1541888946425-d0fbb1861593?auto=format&fit=crop&w=1000&q=80',
+    imageUrl: '',
+    imageStoragePath: '',
+    galleryImages: [],
     published: true,
-    featured: false
+    featured: false,
+    displayOrder: projects.value.length
   }
   isModalOpen.value = true
 }
@@ -55,35 +62,68 @@ const openEditModal = (project: Project) => {
     fullDescription: project.fullDescription || '',
     client: project.client || '',
     imageUrl: project.imageUrl,
+    imageStoragePath: project.imageStoragePath || '',
+    galleryImages: project.galleryImages || [],
     published: project.published,
-    featured: project.featured
+    featured: project.featured,
+    displayOrder: project.displayOrder
   }
   isModalOpen.value = true
 }
 
-const saveProject = () => {
+const setProjectImageUrl = (url: string) => {
+  projectForm.value.imageUrl = url
+  projectForm.value.imageStoragePath = ''
+}
+
+const addGalleryImage = (image: { url: string; storagePath: string }) => {
+  projectForm.value.galleryImages.push({ imageUrl: image.url, storagePath: image.storagePath })
+}
+
+const removeGalleryImage = (storagePath: string) => {
+  projectForm.value.galleryImages = projectForm.value.galleryImages.filter(image => image.storagePath !== storagePath)
+}
+
+const saveProject = async () => {
   if (!projectForm.value.title || !projectForm.value.location) {
     alert('Veuillez renseigner au moins le titre et la localisation du projet.')
     return
   }
 
-  if (isEditing.value && currentEditId.value) {
-    updateProject(currentEditId.value, {
-      ...projectForm.value
-    })
-  } else {
-    addProject({
-      ...projectForm.value,
-      gallery: [projectForm.value.imageUrl]
-    })
+  saveError.value = ''
+  try {
+    if (isEditing.value && currentEditId.value) {
+      await updateProject(currentEditId.value, { ...projectForm.value })
+    } else {
+      await addProject({
+        ...projectForm.value,
+        galleryImages: projectForm.value.galleryImages
+      })
+    }
+    isModalOpen.value = false
+  } catch (error) {
+    console.error('Erreur d’enregistrement du projet:', error)
+    saveError.value = 'Impossible d’enregistrer le projet. Vérifiez la connexion puis réessayez.'
   }
-
-  isModalOpen.value = false
 }
 
-const handleDelete = (id: string) => {
+const handleDelete = async (id: string) => {
   if (confirm('Voulez-vous vraiment supprimer cette réalisation ?')) {
-    deleteProject(id)
+    try {
+      await deleteProject(id)
+    } catch (error) {
+      console.error('Erreur de suppression du projet:', error)
+      saveError.value = 'Impossible de supprimer le projet.'
+    }
+  }
+}
+
+const handlePublishToggle = async (project: Project) => {
+  try {
+    await toggleProjectPublish(project.id)
+  } catch (error) {
+    console.error('Erreur de publication du projet:', error)
+    saveError.value = 'Impossible de modifier la publication du projet.'
   }
 }
 
@@ -95,6 +135,7 @@ useSeoMeta({
 
 <template>
   <div class="space-y-6">
+    <p v-if="saveError" class="border border-red-200 bg-red-50 p-3 text-xs text-red-800">{{ saveError }}</p>
     <!-- Header -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
@@ -170,7 +211,7 @@ useSeoMeta({
           <div class="flex items-center gap-2 self-end md:self-center shrink-0">
             <button
               type="button"
-              @click="toggleProjectPublish(project.id)"
+              @click="handlePublishToggle(project)"
               class="px-3 py-1.5 rounded-xs bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 text-black text-xs font-semibold uppercase tracking-wider transition-colors"
             >
               {{ project.published ? 'Masquer' : 'Publier' }}
@@ -261,7 +302,7 @@ useSeoMeta({
                 v-model="projectForm.date"
                 type="text"
                 class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none font-mono"
-                placeholder="2026"
+                placeholder="Année du projet"
               />
             </div>
 
@@ -278,11 +319,45 @@ useSeoMeta({
 
           <div>
             <ImageUpload
-              v-model="projectForm.imageUrl"
+              :model-value="projectForm.imageUrl"
+              @update:model-value="setProjectImageUrl"
+              @uploaded="projectForm.imageStoragePath = $event.storagePath"
               label="Photo principal du projet"
               hint="Téléchargez une photo de haute qualité depuis votre ordinateur ou collez une URL"
               previewSize="medium"
               maxFileSize="5"
+            />
+          </div>
+          <div class="space-y-2">
+            <label class="block text-[11px] font-bold text-black uppercase tracking-wider">Galerie du projet</label>
+            <ImageUpload
+              model-value=""
+              bucket="project-images"
+              label="Ajouter une image à la galerie"
+              hint="Les images importées seront enregistrées dans la galerie Supabase du projet."
+              @uploaded="addGalleryImage"
+            />
+            <div v-if="projectForm.galleryImages.length" class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div v-for="image in projectForm.galleryImages" :key="image.storagePath" class="relative">
+                <img :src="image.imageUrl" alt="" class="h-20 w-full border border-neutral-200 object-cover">
+                <button
+                  type="button"
+                  class="absolute right-1 top-1 bg-white px-2 py-1 text-[10px]"
+                  @click="removeGalleryImage(image.storagePath)"
+                >
+                  Retirer
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Ordre d’affichage</label>
+            <input
+              v-model.number="projectForm.displayOrder"
+              type="number"
+              min="0"
+              class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
             />
           </div>
 
