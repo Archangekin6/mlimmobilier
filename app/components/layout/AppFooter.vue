@@ -11,11 +11,14 @@ const currentYear = new Date().getFullYear()
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
         <!-- Col 1: Identity -->
         <div class="space-y-4">
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-sm bg-neutral-800 border border-neutral-700 flex items-center justify-center text-white">
-              <UIcon name="i-heroicons-building-office-2" class="w-5 h-5 text-white" />
-            </div>
-            <div>
+          <div class="flex min-w-0 items-center gap-3">
+            <img
+              v-if="settings.logoUrl"
+              :src="settings.logoUrl"
+              :alt="`Logo ${settings.companyName}`"
+              class="max-h-10 w-auto max-w-24 shrink-0 object-contain"
+            >
+            <div class="min-w-0">
               <span class="text-base font-black text-white tracking-wider">{{ settings.companyName }}</span>
               <span v-if="settings.city" class="block text-[10px] uppercase tracking-widest text-neutral-400 font-medium">{{ settings.city }}</span>
             </div>
