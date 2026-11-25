@@ -4,9 +4,10 @@ Ce guide remplace l'ancien ordre d'installation, qui ne doit pas servir à
 rejouer des migrations ou à créer des données par défaut.
 
 1. Dans Supabase, vérifier l'historique réel des migrations et le schéma.
-   Appliquer uniquement les migrations manquantes, dans l'ordre 001 à 007.
+   Appliquer uniquement les migrations manquantes, dans l'ordre 001 à 009.
    Selon les confirmations reçues, 001 et 005 ont déjà été exécutées : ne pas
-   les relancer à l'aveugle.
+   les relancer à l'aveugle. La migration 009 répare les emplacements des
+   images administrables et est requise pour leur préparation automatique.
 2. Vérifier les tables, les fonctions RPC, les politiques RLS et les buckets
    Storage. Le détail des migrations et des dépendances est dans
    `supabase/migrations/`.

@@ -3,42 +3,54 @@ import { createError, type H3Event } from 'h3'
 import { supabaseAdmin } from '~~/server/utils/supabase'
 import { validateSiteImageFile, type MultipartImagePart } from '~~/server/utils/image-validation'
 
-const DEFAULT_SITE_IMAGES = [
+export const DEFAULT_SITE_IMAGES = [
   {
     page: 'home',
     section: 'hero_background',
+    description: 'Image d’arrière-plan du Hero de la page d’accueil',
     image_url: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=2000&q=80',
-    alt_text: 'Architecture contemporaine ML Immobilier'
+    alt_text: 'Architecture contemporaine ML Immobilier',
+    display_order: 1
   },
   {
     page: 'about',
     section: 'hero_background',
+    description: 'Image d’arrière-plan du Hero de la page Qui sommes-nous',
     image_url: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=2000&q=80',
-    alt_text: 'Architecture moderne Abidjan'
+    alt_text: 'Architecture moderne Abidjan',
+    display_order: 1
   },
   {
     page: 'about',
     section: 'presentation_image',
+    description: 'Image de présentation de l’entreprise',
     image_url: 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=1000&q=80',
-    alt_text: 'Équipe technique ML Immobilier SARL'
+    alt_text: 'Équipe technique ML Immobilier SARL',
+    display_order: 2
   },
   {
     page: 'services',
     section: 'btp_section_image',
+    description: 'Image du pôle Construction & Ouvrages',
     image_url: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=1000&q=80',
-    alt_text: 'Travaux de construction BTP ML Immobilier'
+    alt_text: 'Travaux de construction BTP ML Immobilier',
+    display_order: 1
   },
   {
     page: 'services',
     section: 'electrification_section_image',
+    description: 'Image du pôle Énergie & Distribution',
     image_url: 'https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?auto=format&fit=crop&w=1000&q=80',
-    alt_text: 'Travaux d’Électrification et réseau HTA/BTA'
+    alt_text: 'Travaux d’Électrification et réseau HTA/BTA',
+    display_order: 2
   },
   {
     page: 'services',
     section: 'gestion_section_image',
+    description: 'Image du pôle Gestion de Patrimoine',
     image_url: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1000&q=80',
-    alt_text: 'Gestion immobilière à Abidjan ML Immobilier'
+    alt_text: 'Gestion immobilière à Abidjan ML Immobilier',
+    display_order: 3
   }
 ] as const
 

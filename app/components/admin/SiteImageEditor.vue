@@ -11,6 +11,7 @@ const props = defineProps<{
 const {
   getImageBySection,
   fetchSiteImages,
+  error: fetchError,
   updateSiteImage,
   deleteSiteImage,
   updateAltText
@@ -36,7 +37,10 @@ const clearPreview = () => {
 onUnmounted(clearPreview)
 
 const onFileSelect = (event: Event) => {
-  const file = (event.target as HTMLInputElement).files?.[0]
+  const input = event.target
+  if (!(input instanceof HTMLInputElement)) return
+  const file = input.files?.[0]
+  input.value = ''
   if (!file) return
 
   errorMessage.value = ''
@@ -52,7 +56,6 @@ const onFileSelect = (event: Event) => {
     return
   }
 
-  clearPreview()
   selectedFile.value = file
   previewUrl.value = URL.createObjectURL(file)
 }
@@ -129,6 +132,10 @@ onMounted(async () => {
         Prévisualisez puis enregistrez l’image dans Supabase Storage.
       </p>
     </div>
+
+    <p v-if="fetchError" role="alert" class="text-xs text-red-700">
+      Impossible de charger cet emplacement d’image : {{ fetchError }}
+    </p>
 
     <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)]">
       <div class="flex min-h-40 items-center justify-center overflow-hidden rounded-sm border border-neutral-200 bg-neutral-100">

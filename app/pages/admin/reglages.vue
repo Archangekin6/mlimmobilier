@@ -56,7 +56,16 @@ const handleLogoUpload = async (event: Event) => {
       logoUploadSuccess.value = false
     }, 3000)
   } catch (error) {
-    logoUploadError.value = 'Erreur lors du téléchargement de l\'image'
+    if (typeof error === 'object' && error !== null && 'data' in error) {
+      const data = error.data
+      logoUploadError.value = typeof data === 'object' && data !== null && 'statusMessage' in data && typeof data.statusMessage === 'string'
+        ? data.statusMessage
+        : 'Erreur lors du téléchargement de l’image'
+    } else {
+      logoUploadError.value = error instanceof Error && error.message
+        ? error.message
+        : 'Erreur lors du téléchargement de l’image'
+    }
     console.error(error)
   } finally {
     isUploadingLogo.value = false
@@ -149,7 +158,7 @@ useSeoMeta({
             Logo de l'entreprise
           </label>
           <p class="text-[10px] text-neutral-500">
-            Téléchargez le logo depuis votre ordinateur ou collez une URL. Format recommandé : PNG/SVG transparent, hauteur 56px.
+            Téléchargez le logo depuis votre ordinateur ou collez une URL.             Formats acceptés : PNG, JPG, WebP, GIF ou AVIF. Hauteur recommandée : 56px.
           </p>
 
           <!-- Tabs -->
@@ -195,7 +204,7 @@ useSeoMeta({
             <input
               ref="logoFileInput"
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
               @change="handleLogoUpload"
               class="hidden"
             />

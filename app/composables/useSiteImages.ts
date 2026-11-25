@@ -16,6 +16,15 @@ interface ApiResult {
   message?: string
 }
 
+const requiredImageSlots = [
+  ['home', 'hero_background'],
+  ['about', 'hero_background'],
+  ['about', 'presentation_image'],
+  ['services', 'btp_section_image'],
+  ['services', 'electrification_section_image'],
+  ['services', 'gestion_section_image']
+] as const
+
 function getErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === 'object' && error !== null && 'data' in error) {
     const data = error.data
@@ -42,7 +51,10 @@ export function useSiteImages() {
   const isFetched = useState<boolean>('site-images-fetched', () => false)
 
   const fetchSiteImages = async (forceRefresh = false) => {
-    if (isFetched.value && !forceRefresh) {
+    const hasRequiredSlots = requiredImageSlots.every(([page, section]) =>
+      siteImages.value.some(image => image.page === page && image.section === section)
+    )
+    if (isFetched.value && !forceRefresh && hasRequiredSlots) {
       return siteImages.value
     }
 

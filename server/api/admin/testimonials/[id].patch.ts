@@ -1,3 +1,4 @@
+import { getPublicStoragePath } from '~~/server/utils/storage'
 import { supabaseAdmin } from '~~/server/utils/supabase'
 
 export default defineEventHandler(async (event) => {
@@ -28,11 +29,30 @@ export default defineEventHandler(async (event) => {
   )) throw createError({ statusCode: 400, statusMessage: 'Ordre d’affichage invalide' })
 
   const supabase = supabaseAdmin
+  let oldPhotoUrl: string | null = null
+  if (Object.hasOwn(body, 'photo_url')) {
+    const { data: current, error: currentError } = await supabase
+      .from('testimonials').select('photo_url').eq('id', id).maybeSingle()
+    if (currentError) throw createError({ statusCode: 500, statusMessage: 'Impossible de lire la photo actuelle' })
+    if (!current) throw createError({ statusCode: 404, statusMessage: 'Témoignage introuvable' })
+    oldPhotoUrl = current.photo_url
+  }
   const { data, error } = await supabase.from('testimonials').update(body).eq('id', id).select('*').maybeSingle()
   if (error) {
     console.error('Erreur de mise à jour du témoignage:', error.message)
     throw createError({ statusCode: 500, statusMessage: 'Impossible de modifier le témoignage' })
   }
   if (!data) throw createError({ statusCode: 404, statusMessage: 'Témoignage introuvable' })
-  return data
+  let cleanupWarning: string | undefined
+  if (oldPhotoUrl && body.photo_url !== oldPhotoUrl) {
+    const oldPath = getPublicStoragePath('site-images', oldPhotoUrl)
+    if (oldPath) {
+      const { error: removeError } = await supabase.storage.from('site-images').remove([oldPath])
+      if (removeError) {
+        console.error('Suppression de l’ancienne photo du témoignage impossible:', removeError.message)
+        cleanupWarning = 'La nouvelle photo est enregistrée, mais l’ancienne n’a pas pu être supprimée du stockage.'
+      }
+    }
+  }
+  return { ...data, cleanupWarning }
 })

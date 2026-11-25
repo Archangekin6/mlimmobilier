@@ -93,6 +93,34 @@ test('image upload validation checks signature, MIME, extension, and size', () =
   }))
 })
 
+test('image upload validation accepts every configured format up to the exact size limit', () => {
+  const samples = [
+    { filename: 'image.jpg', type: 'image/jpeg', data: Buffer.from([0xff, 0xd8, 0xff]) },
+    { filename: 'image.jpeg', type: 'image/jpeg', data: Buffer.from([0xff, 0xd8, 0xff]) },
+    { filename: 'image.webp', type: 'image/webp', data: Buffer.from('RIFF0000WEBP') },
+    { filename: 'image.gif', type: 'image/gif', data: Buffer.from('GIF89a') },
+    { filename: 'image.avif', type: 'image/avif', data: Buffer.from('0000ftypavif0000') }
+  ]
+
+  for (const sample of samples) {
+    assert.equal(validateSiteImageFile(sample).contentType, sample.type)
+  }
+
+  const exactLimitPng = Buffer.alloc(5 * 1024 * 1024)
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(exactLimitPng)
+  assert.equal(validateSiteImageFile({
+    filename: 'limit.png',
+    type: 'image/png',
+    data: exactLimitPng
+  }).extension, 'png')
+
+  assert.throws(() => validateSiteImageFile({
+    filename: 'image.svg',
+    type: 'image/svg+xml',
+    data: Buffer.from('<svg></svg>')
+  }))
+})
+
 test('storage cleanup accepts only the configured project bucket URL', () => {
   assert.equal(
     getPublicStoragePath('project-images', 'https://project.example/storage/v1/object/public/project-images/a/cover.webp'),

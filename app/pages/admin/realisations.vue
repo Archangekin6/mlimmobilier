@@ -12,6 +12,17 @@ const isModalOpen = ref(false)
 const isEditing = ref(false)
 const currentEditId = ref('')
 const saveError = ref('')
+const imageUploadsInProgress = ref(0)
+
+const getApiErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error !== null && 'data' in error) {
+    const data = error.data
+    if (typeof data === 'object' && data !== null && 'statusMessage' in data && typeof data.statusMessage === 'string') {
+      return data.statusMessage
+    }
+  }
+  return error instanceof Error && error.message ? error.message : fallback
+}
 
 const projectForm = ref({
   title: '',
@@ -81,6 +92,42 @@ const addGalleryImage = (image: { url: string; storagePath: string }) => {
 }
 
 const removeGalleryImage = (storagePath: string) => {
+  if (!window.confirm('Retirer cette image de la galerie ?')) return
+  projectForm.value.galleryImages = projectForm.value.galleryImages.filter(image => image.storagePath !== storagePath)
+}
+
+const replaceGalleryImage = (
+  storagePath: string,
+  replacement: { url: string; storagePath: string }
+) => {
+  projectForm.value.galleryImages = projectForm.value.galleryImages.map(image =>
+    image.storagePath === storagePath
+      ? { imageUrl: replacement.url, storagePath: replacement.storagePath }
+      : image
+  )
+}
+
+const moveGalleryImage = (index: number, direction: -1 | 1) => {
+  const nextIndex = index + direction
+  if (nextIndex < 0 || nextIndex >= projectForm.value.galleryImages.length) return
+  const images = [...projectForm.value.galleryImages]
+  ;[images[index], images[nextIndex]] = [images[nextIndex]!, images[index]!]
+  projectForm.value.galleryImages = images
+}
+
+const trackImageUpload = (uploading: boolean) => {
+  imageUploadsInProgress.value = Math.max(0, imageUploadsInProgress.value + (uploading ? 1 : -1))
+}
+
+const removeProjectCover = () => {
+  if (!projectForm.value.imageUrl || !window.confirm('Supprimer l’image principale du projet ?')) return
+  const storagePath = projectForm.value.imageStoragePath
+  projectForm.value.imageUrl = ''
+  projectForm.value.imageStoragePath = ''
+  if (storagePath) removeGalleryImageWithoutConfirmation(storagePath)
+}
+
+const removeGalleryImageWithoutConfirmation = (storagePath: string) => {
   projectForm.value.galleryImages = projectForm.value.galleryImages.filter(image => image.storagePath !== storagePath)
 }
 
@@ -103,7 +150,7 @@ const saveProject = async () => {
     isModalOpen.value = false
   } catch (error) {
     console.error('Erreur d’enregistrement du projet:', error)
-    saveError.value = 'Impossible d’enregistrer le projet. Vérifiez la connexion puis réessayez.'
+    saveError.value = getApiErrorMessage(error, 'Impossible d’enregistrer le projet. Vérifiez la connexion puis réessayez.')
   }
 }
 
@@ -322,31 +369,79 @@ useSeoMeta({
               :model-value="projectForm.imageUrl"
               @update:model-value="setProjectImageUrl"
               @uploaded="projectForm.imageStoragePath = $event.storagePath"
+              @uploading="trackImageUpload"
               label="Photo principal du projet"
               hint="Téléchargez une photo de haute qualité depuis votre ordinateur ou collez une URL"
-              previewSize="medium"
-              maxFileSize="5"
+              preview-size="medium"
+              :max-file-size="5"
+              bucket="project-images"
             />
+            <button
+              v-if="projectForm.imageUrl"
+              type="button"
+              class="mt-2 text-xs font-semibold text-red-700 underline"
+              @click="removeProjectCover"
+            >
+              Supprimer l’image principale
+            </button>
           </div>
           <div class="space-y-2">
             <label class="block text-[11px] font-bold text-black uppercase tracking-wider">Galerie du projet</label>
             <ImageUpload
               model-value=""
               bucket="project-images"
+              compact
+              :disabled="projectForm.galleryImages.length >= 20"
               label="Ajouter une image à la galerie"
               hint="Les images importées seront enregistrées dans la galerie Supabase du projet."
+              @uploading="trackImageUpload"
               @uploaded="addGalleryImage"
             />
-            <div v-if="projectForm.galleryImages.length" class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div v-for="image in projectForm.galleryImages" :key="image.storagePath" class="relative">
-                <img :src="image.imageUrl" alt="" class="h-20 w-full border border-neutral-200 object-cover">
-                <button
-                  type="button"
-                  class="absolute right-1 top-1 bg-white px-2 py-1 text-[10px]"
-                  @click="removeGalleryImage(image.storagePath)"
-                >
-                  Retirer
-                </button>
+            <p v-if="projectForm.galleryImages.length >= 20" class="text-xs text-amber-700">
+              La galerie est limitée à 20 images.
+            </p>
+            <div v-if="projectForm.galleryImages.length" class="space-y-3">
+              <div
+                v-for="(image, index) in projectForm.galleryImages"
+                :key="image.storagePath"
+                class="grid gap-3 rounded-sm border border-neutral-200 p-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+              >
+                <ImageUpload
+                  :model-value="image.imageUrl"
+                  bucket="project-images"
+                  compact
+                  preview-size="small"
+                  label="Image de galerie"
+                  @uploading="trackImageUpload"
+                  @uploaded="replaceGalleryImage(image.storagePath, $event)"
+                />
+                <div class="flex items-start gap-1">
+                  <button
+                    type="button"
+                    :disabled="index === 0"
+                    class="rounded-sm border px-2 py-1 text-xs disabled:opacity-40"
+                    :aria-label="`Déplacer l’image ${index + 1} vers le haut`"
+                    @click="moveGalleryImage(index, -1)"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    :disabled="index === projectForm.galleryImages.length - 1"
+                    class="rounded-sm border px-2 py-1 text-xs disabled:opacity-40"
+                    :aria-label="`Déplacer l’image ${index + 1} vers le bas`"
+                    @click="moveGalleryImage(index, 1)"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-sm border border-red-200 px-2 py-1 text-xs text-red-700"
+                    @click="removeGalleryImage(image.storagePath)"
+                  >
+                    Retirer
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -404,9 +499,10 @@ useSeoMeta({
             </button>
             <button
               type="submit"
+              :disabled="imageUploadsInProgress > 0"
               class="bg-black hover:bg-neutral-800 text-white font-bold px-5 py-2 rounded-xs text-xs uppercase tracking-wider transition-colors"
             >
-              {{ isEditing ? 'Enregistrer' : 'Créer le projet' }}
+              {{ imageUploadsInProgress ? 'Téléversement en cours…' : (isEditing ? 'Enregistrer' : 'Créer le projet') }}
             </button>
           </div>
         </form>

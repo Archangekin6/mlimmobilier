@@ -67,9 +67,11 @@ const pageLabels: { [key: string]: string } = {
 
 // Handle file selection
 const onFileSelect = (event: Event, imageId: string) => {
-  const target = event.target as HTMLInputElement
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
   if (target.files && target.files[0]) {
     const file = target.files[0]
+    target.value = ''
     
     // Validate file type
     if (!file.type.startsWith('image/')) {
@@ -376,7 +378,7 @@ const saveAltText = async (imageId: string) => {
                 <label class="flex-1 cursor-pointer">
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
                     class="hidden"
                     @change="(e) => onFileSelect(e, image.id)"
                     :disabled="uploadProgress"
@@ -399,7 +401,7 @@ const saveAltText = async (imageId: string) => {
               </div>
 
               <p class="text-[10px] text-neutral-500 uppercase tracking-wider">
-                Format : JPG, PNG, WebP • Taille max : 5 MB
+                Formats : JPG, PNG, WebP, GIF, AVIF • Taille max : 5 Mo
               </p>
             </div>
           </div>

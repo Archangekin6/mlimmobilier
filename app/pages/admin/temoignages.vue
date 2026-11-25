@@ -8,6 +8,7 @@ const { testimonials, saveTestimonial, deleteTestimonial, loadAdminData } = useS
 const editingId = ref<string | null>(null)
 const saving = ref(false)
 const errorMessage = ref('')
+const successMessage = ref('')
 const form = ref({
   client_name: '',
   client_function: '',
@@ -22,6 +23,16 @@ const form = ref({
   featured: false,
   display_order: 0
 })
+
+const getApiErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error !== null && 'data' in error) {
+    const data = error.data
+    if (typeof data === 'object' && data !== null && 'statusMessage' in data && typeof data.statusMessage === 'string') {
+      return data.statusMessage
+    }
+  }
+  return error instanceof Error && error.message ? error.message : fallback
+}
 
 const resetForm = () => {
   editingId.value = null
@@ -38,6 +49,12 @@ const resetForm = () => {
     published: false,
     featured: false,
     display_order: testimonials.value.length
+  }
+}
+
+const removePhoto = () => {
+  if (form.value.photo_url && window.confirm('Supprimer la photo de ce témoignage ?')) {
+    form.value.photo_url = ''
   }
 }
 
@@ -62,8 +79,9 @@ const editTestimonial = (testimonial: Testimonial) => {
 const submit = async () => {
   saving.value = true
   errorMessage.value = ''
+  successMessage.value = ''
   try {
-    await saveTestimonial({
+    const cleanupWarning = await saveTestimonial({
       ...form.value,
       client_function: form.value.client_function || null,
       client_company: form.value.client_company || null,
@@ -74,9 +92,10 @@ const submit = async () => {
       ...(editingId.value ? { id: editingId.value } : {})
     })
     resetForm()
+    successMessage.value = cleanupWarning || 'Témoignage enregistré.'
   } catch (error) {
     console.error('Erreur d’enregistrement du témoignage:', error)
-    errorMessage.value = 'Impossible d’enregistrer le témoignage.'
+    errorMessage.value = getApiErrorMessage(error, 'Impossible d’enregistrer le témoignage.')
   } finally {
     saving.value = false
   }
@@ -97,8 +116,9 @@ const togglePublished = async (testimonial: Testimonial) => {
 const removeTestimonial = async (id: string) => {
   if (!confirm('Supprimer définitivement ce témoignage ?')) return
   try {
-    await deleteTestimonial(id)
+    const cleanupWarning = await deleteTestimonial(id)
     if (editingId.value === id) resetForm()
+    successMessage.value = cleanupWarning || 'Témoignage supprimé.'
   } catch (error) {
     console.error('Erreur de suppression du témoignage:', error)
     errorMessage.value = 'Impossible de supprimer le témoignage.'
@@ -121,6 +141,7 @@ onMounted(() => {
     </header>
 
     <p v-if="errorMessage" class="border border-red-200 bg-red-50 p-3 text-xs text-red-800">{{ errorMessage }}</p>
+    <p v-if="successMessage" role="status" class="border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{{ successMessage }}</p>
 
     <form class="space-y-4 border border-neutral-200 bg-white p-5" @submit.prevent="submit">
       <h3 class="font-bold text-sm">{{ editingId ? 'Modifier le témoignage' : 'Ajouter un témoignage' }}</h3>
@@ -158,9 +179,24 @@ onMounted(() => {
         <label class="text-xs">Ordre d’affichage
           <input v-model.number="form.display_order" type="number" min="0" class="mt-1 w-full border border-neutral-300 p-2">
         </label>
-        <label class="text-xs sm:col-span-2">URL photo
-          <input v-model="form.photo_url" type="url" maxlength="2000" class="mt-1 w-full border border-neutral-300 p-2">
-        </label>
+        <div class="sm:col-span-2">
+          <ImageUpload
+            :model-value="form.photo_url"
+            bucket="site-images"
+            label="Photo du client"
+            hint="Téléversez une image ou indiquez une URL externe."
+            preview-size="small"
+            @update:model-value="form.photo_url = $event"
+          />
+          <button
+            v-if="form.photo_url"
+            type="button"
+            class="mt-2 text-xs font-semibold text-red-700 underline"
+            @click="removePhoto"
+          >
+            Supprimer la photo
+          </button>
+        </div>
         <label class="text-xs sm:col-span-2">Témoignage *
           <textarea v-model="form.testimonial_text" required maxlength="5000" rows="4" class="mt-1 w-full border border-neutral-300 p-2" />
         </label>

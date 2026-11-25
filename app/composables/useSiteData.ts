@@ -513,17 +513,20 @@ export function useSiteData() {
 
   const saveTestimonial = async (testimonial: Partial<Testimonial> & Pick<Testimonial, 'client_name' | 'testimonial_text'>) => {
     const id = testimonial.id
+    let result: { cleanupWarning?: string } | undefined
     if (id) {
-      await $fetch(`/api/admin/testimonials/${encodeURIComponent(id)}`, { method: 'PATCH', body: testimonial })
+      result = await $fetch<{ cleanupWarning?: string }>(`/api/admin/testimonials/${encodeURIComponent(id)}`, { method: 'PATCH', body: testimonial })
     } else {
       await $fetch('/api/admin/testimonials', { method: 'POST', body: testimonial })
     }
     await loadAdminData(true)
+    return result?.cleanupWarning
   }
 
   const deleteTestimonial = async (id: string) => {
-    await $fetch(`/api/admin/testimonials/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    const result = await $fetch<{ cleanupWarning?: string }>(`/api/admin/testimonials/${encodeURIComponent(id)}`, { method: 'DELETE' })
     await loadAdminData(true)
+    return result.cleanupWarning
   }
 
   return {
