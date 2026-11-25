@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import ImageUpload from '~/components/common/ImageUpload.vue'
 import { useSiteData, type Project } from '~/composables/useSiteData'
 
 definePageMeta({
