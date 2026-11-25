@@ -12,7 +12,7 @@ const {
   error,
   fetchSiteImages,
   updateSiteImage,
-  resetSiteImage,
+  deleteSiteImage,
   updateAltText
 } = useSiteImages()
 
@@ -148,9 +148,10 @@ const cancelUpload = () => {
   errorMessage.value = null
 }
 
-// Reset image to default
-const handleReset = async (imageId: string) => {
-  if (!confirm('Voulez-vous vraiment réinitialiser cette image ?')) {
+// Delete the reference from the public slot
+const handleDelete = async (imageId: string) => {
+  const image = siteImages.value.find(item => item.id === imageId)
+  if (!image?.image_url || !confirm(`Supprimer l’image « ${image.description} » ?`)) {
     return
   }
   
@@ -159,7 +160,7 @@ const handleReset = async (imageId: string) => {
   successMessage.value = null
   
   try {
-    const result = await resetSiteImage(imageId)
+    const result = await deleteSiteImage(imageId)
     
     if (result.success) {
       successMessage.value = result.message
@@ -311,10 +312,14 @@ const saveAltText = async (imageId: string) => {
             <!-- Image Preview -->
             <div class="relative rounded-sm overflow-hidden bg-neutral-100 border border-neutral-200 h-48">
               <img
+                v-if="selectedImageId === image.id && previewUrl || image.image_url"
                 :src="selectedImageId === image.id && previewUrl ? previewUrl : image.image_url"
                 :alt="image.alt_text || image.description"
                 class="w-full h-full object-cover"
               />
+              <p v-else class="flex h-full items-center justify-center text-xs text-neutral-500">
+                Aucune image définie
+              </p>
               <div v-if="selectedImageId === image.id && previewUrl" class="absolute top-2 right-2">
                 <span class="bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-sm uppercase tracking-wider">
                   Aperçu
@@ -385,18 +390,19 @@ const saveAltText = async (imageId: string) => {
                   />
                   <div class="w-full inline-flex items-center justify-center gap-2 bg-neutral-900 hover:bg-black disabled:opacity-50 text-white font-semibold text-xs uppercase tracking-wider py-2.5 px-4 rounded-sm transition-all text-center">
                     <UIcon name="i-heroicons-photo" class="w-4 h-4 text-white" />
-                    <span>Remplacer l'image</span>
+                    <span>{{ image.image_url ? 'Remplacer l’image' : '+ Ajouter une image' }}</span>
                   </div>
                 </label>
 
                 <button
+                  v-if="image.image_url"
                   type="button"
-                  @click="handleReset(image.id)"
-                  :disabled="uploadProgress || !image.storage_path"
-                  class="inline-flex items-center justify-center gap-2 bg-white hover:bg-neutral-50 disabled:opacity-50 text-neutral-800 border border-neutral-300 font-semibold text-xs uppercase tracking-wider py-2.5 px-4 rounded-sm transition-colors"
+                  @click="handleDelete(image.id)"
+                  :disabled="uploadProgress"
+                  class="inline-flex items-center justify-center gap-2 bg-white hover:bg-red-50 disabled:opacity-50 text-red-700 border border-red-200 font-semibold text-xs uppercase tracking-wider py-2.5 px-4 rounded-sm transition-colors"
                 >
-                  <UIcon name="i-heroicons-arrow-path" class="w-4 h-4 text-neutral-700" />
-                  <span>Réinitialiser</span>
+                  <UIcon name="i-heroicons-trash" class="w-4 h-4 text-red-700" />
+                  <span>Supprimer l’image</span>
                 </button>
               </div>
 

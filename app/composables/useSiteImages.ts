@@ -14,6 +14,7 @@ export interface SiteImage {
 interface ApiResult {
   success: boolean
   message?: string
+  image?: SiteImage
 }
 
 const requiredImageSlots = [
@@ -95,6 +96,13 @@ export function useSiteImages() {
     return siteImages.value.filter(image => image.page === page)
   }
 
+  const applyUpdatedImage = (image: SiteImage) => {
+    const index = siteImages.value.findIndex(item => item.id === image.id)
+    if (index === -1) siteImages.value = [...siteImages.value, image]
+    else siteImages.value[index] = image
+    isFetched.value = true
+  }
+
   const updateSiteImage = async (
     imageId: string,
     file: File,
@@ -110,12 +118,12 @@ export function useSiteImages() {
         formData.append('alt_text', altText)
       }
 
-      const result = await $fetch<ApiResult>(
+      const result = await $fetch<ApiResult & { image: SiteImage }>(
         `/api/admin/site-images/${encodeURIComponent(imageId)}/image`,
         { method: 'POST', body: formData }
       )
 
-      await fetchSiteImages(true)
+      applyUpdatedImage(result.image)
       return {
         success: result.success,
         message: result.message || 'Image mise à jour avec succès'
@@ -136,12 +144,12 @@ export function useSiteImages() {
     error.value = null
 
     try {
-      const result = await $fetch<ApiResult>(
+      const result = await $fetch<ApiResult & { image: SiteImage }>(
         `/api/admin/site-images/${encodeURIComponent(imageId)}/image`,
         { method: 'DELETE' }
       )
 
-      await fetchSiteImages(true)
+      applyUpdatedImage(result.image)
       return {
         success: result.success,
         message: result.message || 'Image supprimée du stockage'
@@ -162,12 +170,12 @@ export function useSiteImages() {
     error.value = null
 
     try {
-      const result = await $fetch<ApiResult>(
+      const result = await $fetch<ApiResult & { image: SiteImage }>(
         `/api/admin/site-images/${encodeURIComponent(imageId)}/reset`,
         { method: 'POST' }
       )
 
-      await fetchSiteImages(true)
+      applyUpdatedImage(result.image)
       return {
         success: result.success,
         message: result.message || 'Image réinitialisée avec succès'
@@ -186,12 +194,12 @@ export function useSiteImages() {
     altText: string
   ): Promise<{ success: boolean; message: string }> => {
     try {
-      await $fetch<ApiResult>(`/api/admin/site-images/${encodeURIComponent(imageId)}`, {
+      const result = await $fetch<ApiResult & { image: SiteImage }>(`/api/admin/site-images/${encodeURIComponent(imageId)}`, {
         method: 'PATCH',
         body: { alt_text: altText }
       })
 
-      await fetchSiteImages(true)
+      applyUpdatedImage(result.image)
       return { success: true, message: 'Texte alternatif mis à jour' }
     } catch (updateError: unknown) {
       const message = getErrorMessage(updateError, 'Erreur lors de la mise à jour')

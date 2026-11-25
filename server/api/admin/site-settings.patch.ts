@@ -1,4 +1,4 @@
-import { getPublicStoragePath } from '~~/server/utils/storage'
+import { getPublicStoragePath, removeStorageFileIfUnused } from '~~/server/utils/storage'
 import { isValidSiteSettingsString } from '~~/server/utils/site-settings-validation'
 import { supabaseAdmin } from '~~/server/utils/supabase'
 
@@ -111,8 +111,8 @@ export default defineEventHandler(async (event) => {
   if (oldLogoUrl && update.logo_url !== oldLogoUrl) {
     const oldPath = getPublicStoragePath('site-images', oldLogoUrl)
     if (oldPath) {
-      const { error: removeError } = await supabase.storage.from('site-images').remove([oldPath])
-      if (removeError) console.error('Suppression de l’ancien logo impossible:', removeError.message)
+      const cleanup = await removeStorageFileIfUnused('site-images', oldPath)
+      if (cleanup.warning) console.error(cleanup.warning)
     }
   }
   return data

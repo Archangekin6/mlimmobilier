@@ -19,6 +19,7 @@ const {
 
 const image = computed(() => getImageBySection(props.page, props.section))
 const altText = ref('')
+const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
 const previewUrl = ref('')
 const isSaving = ref(false)
@@ -58,6 +59,18 @@ const onFileSelect = (event: Event) => {
 
   selectedFile.value = file
   previewUrl.value = URL.createObjectURL(file)
+}
+
+const chooseFile = () => {
+  if (isSaving.value || !fileInput.value) return
+  fileInput.value.value = ''
+  fileInput.value.click()
+}
+
+const cancelUpload = () => {
+  selectedFile.value = null
+  clearPreview()
+  errorMessage.value = ''
 }
 
 const saveImage = async () => {
@@ -140,8 +153,8 @@ onMounted(async () => {
     <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)]">
       <div class="flex min-h-40 items-center justify-center overflow-hidden rounded-sm border border-neutral-200 bg-neutral-100">
         <img
-          v-if="previewUrl || image?.image_url"
-          :src="previewUrl || image?.image_url || ''"
+        v-if="previewUrl || image?.image_url"
+        :src="previewUrl || image?.image_url || ''"
           :alt="altText"
           class="max-h-64 w-full object-contain"
         />
@@ -149,16 +162,14 @@ onMounted(async () => {
       </div>
 
       <div class="space-y-3">
-        <label class="block text-xs font-semibold text-neutral-700">
-          Nouvelle image (5 Mo maximum)
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
-            class="mt-1 block w-full text-xs"
-            :disabled="isSaving"
-            @change="onFileSelect"
-          />
-        </label>
+        <input
+          ref="fileInput"
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+          class="hidden"
+          :disabled="isSaving"
+          @change="onFileSelect"
+        >
 
         <label class="block text-xs font-semibold text-neutral-700">
           Texte alternatif
@@ -174,11 +185,30 @@ onMounted(async () => {
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
+            v-if="!selectedFile"
             class="rounded-sm bg-neutral-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-            :disabled="!image || !selectedFile || isSaving"
+            :disabled="!image || isSaving"
+            @click="chooseFile"
+          >
+            {{ image?.image_url ? 'Remplacer l’image' : '+ Ajouter une image' }}
+          </button>
+          <button
+            v-if="selectedFile"
+            type="button"
+            class="rounded-sm bg-neutral-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            :disabled="!image || isSaving"
             @click="saveImage"
           >
-            {{ isSaving ? 'Enregistrement…' : 'Enregistrer l’image' }}
+            {{ isSaving ? 'Enregistrement…' : (image?.image_url ? 'Confirmer le remplacement' : 'Enregistrer l’image') }}
+          </button>
+          <button
+            v-if="selectedFile"
+            type="button"
+            class="rounded-sm border border-neutral-300 px-3 py-2 text-xs font-semibold text-neutral-800 disabled:opacity-50"
+            :disabled="isSaving"
+            @click="cancelUpload"
+          >
+            Annuler
           </button>
           <button
             type="button"
@@ -189,7 +219,7 @@ onMounted(async () => {
             Enregistrer le texte
           </button>
           <button
-            v-if="image?.image_url"
+            v-if="image?.image_url && !selectedFile"
             type="button"
             class="rounded-sm border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50"
             :disabled="isSaving"

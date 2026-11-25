@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import ImageUpload from '~/components/common/ImageUpload.vue'
 import { useSiteData, type Testimonial } from '~/composables/useSiteData'
 
 definePageMeta({ layout: 'admin' })
@@ -9,6 +10,9 @@ const editingId = ref<string | null>(null)
 const saving = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
+const pendingPhotoStoragePath = ref('')
+const photoUploading = ref(false)
+const photoUrlUploaded = ref('')
 const form = ref({
   client_name: '',
   client_function: '',
@@ -36,6 +40,8 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
 
 const resetForm = () => {
   editingId.value = null
+  pendingPhotoStoragePath.value = ''
+  photoUrlUploaded.value = ''
   form.value = {
     client_name: '',
     client_function: '',
@@ -52,14 +58,125 @@ const resetForm = () => {
   }
 }
 
-const removePhoto = () => {
-  if (form.value.photo_url && window.confirm('Supprimer la photo de ce témoignage ?')) {
-    form.value.photo_url = ''
+const removeUnusedPhoto = async (storagePath: string) => {
+  if (!storagePath) return
+  await $fetch('/api/admin/upload', {
+    method: 'DELETE',
+    body: { bucket: 'site-images', storagePath }
+  })
+}
+
+const removePhoto = async () => {
+  if (!form.value.photo_url || saving.value) return
+  errorMessage.value = ''
+  successMessage.value = ''
+
+  if (editingId.value) {
+    saving.value = true
+    try {
+      const result = await $fetch<{ cleanupWarning?: string }>(
+        `/api/admin/testimonials/${encodeURIComponent(editingId.value)}`,
+        { method: 'PATCH', body: { photo_url: null } }
+      )
+      form.value.photo_url = ''
+      photoUrlUploaded.value = ''
+      testimonials.value = testimonials.value.map(testimonial =>
+        testimonial.id === editingId.value ? { ...testimonial, photo_url: null } : testimonial
+      )
+      pendingPhotoStoragePath.value = ''
+      successMessage.value = result.cleanupWarning || 'Photo supprimée.'
+    } catch (error) {
+      console.error('Erreur de suppression de la photo du témoignage:', error)
+      errorMessage.value = getApiErrorMessage(error, 'Impossible de supprimer la photo.')
+    } finally {
+      saving.value = false
+    }
+  } else {
+    try {
+      await removeUnusedPhoto(pendingPhotoStoragePath.value)
+      form.value.photo_url = ''
+      pendingPhotoStoragePath.value = ''
+      photoUrlUploaded.value = ''
+    } catch (error) {
+      console.error('Erreur de suppression de l’image temporaire:', error)
+      errorMessage.value = getApiErrorMessage(error, 'Impossible de supprimer cette image.')
+    }
   }
 }
 
-const editTestimonial = (testimonial: Testimonial) => {
+const handlePhotoUploaded = async (image: { url: string; storagePath: string }) => {
+  const previousUrl = form.value.photo_url
+  if (!editingId.value) {
+    form.value.photo_url = image.url
+    const previousPath = pendingPhotoStoragePath.value
+    pendingPhotoStoragePath.value = image.storagePath
+    photoUrlUploaded.value = image.url
+    if (previousPath && previousPath !== image.storagePath) {
+      try {
+        await removeUnusedPhoto(previousPath)
+      } catch (error) {
+        console.error('Nettoyage de l’ancienne photo temporaire impossible:', error)
+        errorMessage.value = 'La nouvelle photo est prête, mais l’ancienne image temporaire n’a pas pu être supprimée.'
+      }
+    }
+    return
+  }
+
+  saving.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+  try {
+    const result = await $fetch<{ cleanupWarning?: string }>(
+      `/api/admin/testimonials/${encodeURIComponent(editingId.value)}`,
+      { method: 'PATCH', body: { photo_url: image.url } }
+    )
+    form.value.photo_url = image.url
+    testimonials.value = testimonials.value.map(testimonial =>
+      testimonial.id === editingId.value ? { ...testimonial, photo_url: image.url } : testimonial
+    )
+    pendingPhotoStoragePath.value = ''
+    successMessage.value = result.cleanupWarning || 'Photo remplacée.'
+  } catch (error) {
+    console.error('Erreur de remplacement de la photo du témoignage:', error)
+    try {
+      await removeUnusedPhoto(image.storagePath)
+    } catch (cleanupError) {
+      console.error('Nettoyage de la nouvelle photo impossible:', cleanupError)
+    }
+    form.value.photo_url = previousUrl
+    errorMessage.value = getApiErrorMessage(error, 'Impossible de remplacer la photo.')
+  } finally {
+    saving.value = false
+  }
+}
+
+const updatePhotoUrl = (url: string) => {
+  form.value.photo_url = url
+  const pendingPath = pendingPhotoStoragePath.value
+  if (pendingPath && url !== photoUrlUploaded.value) {
+    pendingPhotoStoragePath.value = ''
+    photoUrlUploaded.value = ''
+    void removeUnusedPhoto(pendingPath).catch((error: unknown) => {
+      console.error('Nettoyage de l’image temporaire impossible:', error)
+      errorMessage.value = getApiErrorMessage(error, 'Impossible de supprimer l’image temporaire remplacée.')
+    })
+  }
+}
+
+const editTestimonial = async (testimonial: Testimonial) => {
+  if (saving.value || photoUploading.value) return
+  if (pendingPhotoStoragePath.value) {
+    try {
+      await removeUnusedPhoto(pendingPhotoStoragePath.value)
+    } catch (error) {
+      console.error('Nettoyage de l’image temporaire impossible:', error)
+      errorMessage.value = getApiErrorMessage(error, 'Impossible de supprimer l’image temporaire.')
+      return
+    }
+  }
   editingId.value = testimonial.id
+  pendingPhotoStoragePath.value = ''
+  photoUrlUploaded.value = ''
   form.value = {
     client_name: testimonial.client_name,
     client_function: testimonial.client_function || '',
@@ -77,6 +194,7 @@ const editTestimonial = (testimonial: Testimonial) => {
 }
 
 const submit = async () => {
+  if (saving.value || photoUploading.value) return
   saving.value = true
   errorMessage.value = ''
   successMessage.value = ''
@@ -184,18 +302,15 @@ onMounted(() => {
             :model-value="form.photo_url"
             bucket="site-images"
             label="Photo du client"
-            hint="Téléversez une image ou indiquez une URL externe."
+            hint="Ajoutez une image, remplacez-la ou supprimez-la."
             preview-size="small"
-            @update:model-value="form.photo_url = $event"
+            :disabled="saving || photoUploading"
+            :allow-url="true"
+            @update:model-value="updatePhotoUrl"
+            @uploaded="handlePhotoUploaded"
+            @uploading="photoUploading = $event"
+            @delete="removePhoto"
           />
-          <button
-            v-if="form.photo_url"
-            type="button"
-            class="mt-2 text-xs font-semibold text-red-700 underline"
-            @click="removePhoto"
-          >
-            Supprimer la photo
-          </button>
         </div>
         <label class="text-xs sm:col-span-2">Témoignage *
           <textarea v-model="form.testimonial_text" required maxlength="5000" rows="4" class="mt-1 w-full border border-neutral-300 p-2" />
@@ -206,7 +321,7 @@ onMounted(() => {
         <label class="flex items-center gap-2"><input v-model="form.featured" type="checkbox"> Mis en avant</label>
       </div>
       <div class="flex gap-2">
-        <button type="submit" :disabled="saving" class="bg-black px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
+        <button type="submit" :disabled="saving || photoUploading" class="bg-black px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
           {{ saving ? 'Enregistrement…' : 'Enregistrer' }}
         </button>
         <button v-if="editingId" type="button" class="border px-4 py-2 text-xs" @click="resetForm">Annuler</button>

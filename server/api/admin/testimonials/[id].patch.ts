@@ -1,4 +1,4 @@
-import { getPublicStoragePath } from '~~/server/utils/storage'
+import { getPublicStoragePath, removeStorageFileIfUnused } from '~~/server/utils/storage'
 import { supabaseAdmin } from '~~/server/utils/supabase'
 
 export default defineEventHandler(async (event) => {
@@ -47,11 +47,8 @@ export default defineEventHandler(async (event) => {
   if (oldPhotoUrl && body.photo_url !== oldPhotoUrl) {
     const oldPath = getPublicStoragePath('site-images', oldPhotoUrl)
     if (oldPath) {
-      const { error: removeError } = await supabase.storage.from('site-images').remove([oldPath])
-      if (removeError) {
-        console.error('Suppression de l’ancienne photo du témoignage impossible:', removeError.message)
-        cleanupWarning = 'La nouvelle photo est enregistrée, mais l’ancienne n’a pas pu être supprimée du stockage.'
-      }
+      const cleanup = await removeStorageFileIfUnused('site-images', oldPath)
+      cleanupWarning = cleanup.warning
     }
   }
   return { ...data, cleanupWarning }

@@ -1,4 +1,4 @@
-import { getPublicStoragePath } from '~~/server/utils/storage'
+import { getPublicStoragePath, removeStorageFileIfUnused } from '~~/server/utils/storage'
 import { supabaseAdmin } from '~~/server/utils/supabase'
 
 const uuidPattern = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i
@@ -129,13 +129,23 @@ export default defineEventHandler(async (event) => {
       })))
       if (insertError) throw createError({ statusCode: 500, statusMessage: 'Impossible d’enregistrer l’image du projet' })
     }
-    const paths = (oldImages || [])
+    const paths = new Set((oldImages || [])
       .filter(image => getPublicStoragePath('project-images', image.image_url) === image.storage_path)
       .map(image => image.storage_path)
-      .filter(path => !imagesToSave.some(image => image.storage_path === path))
-    if (paths.length) {
-      const { error: storageError } = await supabase.storage.from('project-images').remove(paths)
-      if (storageError) console.error('Suppression d’anciennes images du projet impossible:', storageError.message)
+      .filter(path => !imagesToSave.some(image => image.storage_path === path)))
+    const oldCoverPath = current.cover_image_url
+      ? getPublicStoragePath('project-images', current.cover_image_url)
+      : null
+    const nextCoverUrl = typeof update.cover_image_url === 'string'
+      ? update.cover_image_url
+      : current.cover_image_url
+    const nextCoverPath = nextCoverUrl
+      ? getPublicStoragePath('project-images', nextCoverUrl)
+      : null
+    if (oldCoverPath && oldCoverPath !== nextCoverPath) paths.add(oldCoverPath)
+    for (const storagePath of paths) {
+      const cleanup = await removeStorageFileIfUnused('project-images', storagePath)
+      if (cleanup.warning) console.error(cleanup.warning)
     }
   }
 

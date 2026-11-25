@@ -6,7 +6,12 @@ import {
 } from '../server/utils/quote-rate-limit-session.ts'
 import { isAdminProfileForUser } from '../server/utils/admin-auth.ts'
 import { validateSiteImageFile } from '../server/utils/image-validation.ts'
-import { getPublicStoragePath } from '../server/utils/storage.ts'
+import {
+  getPublicStoragePath,
+  isSafeStoragePath,
+  removeStorageFileIfUnused,
+  type StorageCleanupClient
+} from '../server/utils/storage.ts'
 import { isValidSiteSettingsString } from '../server/utils/site-settings-validation.ts'
 
 const originalSupabaseUrl = process.env.NUXT_PUBLIC_SUPABASE_URL
@@ -134,6 +139,97 @@ test('storage cleanup accepts only the configured project bucket URL', () => {
     getPublicStoragePath('project-images', 'https://project.example/storage/v1/object/public/project-images/%2e%2e/secret'),
     null
   )
+})
+
+test('storage cleanup validates paths and preserves files with shared references', async () => {
+  assert.equal(isSafeStoragePath('gallery/photo.webp'), true)
+  assert.equal(isSafeStoragePath('../photo.webp'), false)
+  assert.equal(isSafeStoragePath('folder\\photo.webp'), false)
+
+  const removed: string[] = []
+  const client: StorageCleanupClient = {
+    from(table) {
+      return {
+        select() {
+          return {
+            eq(column, value) {
+              return {
+                async limit() {
+                  const referenced = table === 'project_images' &&
+                    column === 'storage_path' &&
+                    value === 'shared/photo.webp'
+                  return { data: referenced ? [{ id: 'image-1' }] : [], error: null }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    storage: {
+      from() {
+        return {
+          getPublicUrl(path) {
+            return { data: { publicUrl: `https://project.example/storage/v1/object/public/project-images/${path}` } }
+          },
+          async remove(paths) {
+            removed.push(...paths)
+            return { error: null }
+          }
+        }
+      }
+    }
+  }
+
+  const result = await removeStorageFileIfUnused('project-images', 'shared/photo.webp', client)
+  assert.equal(result.referenced, true)
+  assert.equal(result.removed, false)
+  assert.deepEqual(removed, [])
+})
+
+test('storage cleanup deletes unreferenced files and retains files when reference checks fail', async () => {
+  const removed: string[] = []
+  let lookupFails = false
+  const client: StorageCleanupClient = {
+    from() {
+      return {
+        select() {
+          return {
+            eq() {
+              return {
+                async limit() {
+                  return { data: [], error: lookupFails ? { message: 'lookup failed' } : null }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    storage: {
+      from() {
+        return {
+          getPublicUrl(path) {
+            return { data: { publicUrl: `https://project.example/storage/${path}` } }
+          },
+          async remove(paths) {
+            removed.push(...paths)
+            return { error: null }
+          }
+        }
+      }
+    }
+  }
+
+  const result = await removeStorageFileIfUnused('site-images', 'unused/photo.webp', client)
+  assert.equal(result.removed, true)
+  assert.deepEqual(removed, ['unused/photo.webp'])
+
+  lookupFails = true
+  const failedLookup = await removeStorageFileIfUnused('site-images', 'unknown/photo.webp', client)
+  assert.equal(failedLookup.removed, false)
+  assert.match(failedLookup.warning || '', /conservé/)
+  assert.deepEqual(removed, ['unused/photo.webp'])
 })
 
 test('long CMS text fields accept 4000 characters but reject longer values', () => {

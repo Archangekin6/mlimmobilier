@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { createError, type H3Event } from 'h3'
 import { supabaseAdmin } from '~~/server/utils/supabase'
 import { validateSiteImageFile, type MultipartImagePart } from '~~/server/utils/image-validation'
+import { removeStorageFileIfUnused } from '~~/server/utils/storage'
 
 export const DEFAULT_SITE_IMAGES = [
   {
@@ -86,17 +87,6 @@ function findDefaultSiteImage(page: string, section: string) {
   return DEFAULT_SITE_IMAGES.find(image => image.page === page && image.section === section)
 }
 
-function isSafeStoragePath(storagePath: string): boolean {
-  return Boolean(
-    storagePath &&
-    storagePath.length <= 1024 &&
-    !storagePath.startsWith('/') &&
-    !storagePath.includes('\\') &&
-    !storagePath.includes('\0') &&
-    storagePath.split('/').every(segment => segment && segment !== '.' && segment !== '..')
-  )
-}
-
 export async function resetAdminSiteImage(
   event: H3Event,
   imageId: string,
@@ -140,19 +130,8 @@ export async function resetAdminSiteImage(
 
   let cleanupWarning: string | undefined
   if (image.storage_path) {
-    if (!isSafeStoragePath(image.storage_path)) {
-      cleanupWarning = 'Le fichier précédent n’a pas pu être supprimé automatiquement.'
-      console.error('Chemin Storage invalide ignoré lors de la réinitialisation:', image.storage_path)
-    } else {
-      const { error: removeError } = await supabase.storage
-        .from('site-images')
-        .remove([image.storage_path])
-
-      if (removeError) {
-        cleanupWarning = 'Le fichier précédent n’a pas pu être supprimé automatiquement.'
-        console.error('Erreur de suppression de l’ancienne image:', removeError)
-      }
-    }
+    const cleanup = await removeStorageFileIfUnused('site-images', image.storage_path)
+    cleanupWarning = cleanup.warning
   }
 
   return { image: updatedImage, cleanupWarning }
@@ -181,19 +160,8 @@ export async function deleteAdminSiteImage(event: H3Event, imageId: string) {
 
   let cleanupWarning: string | undefined
   if (image.storage_path) {
-    if (!isSafeStoragePath(image.storage_path)) {
-      cleanupWarning = 'Le fichier précédent n’a pas pu être supprimé automatiquement.'
-      console.error('Chemin Storage invalide ignoré lors de la suppression:', image.storage_path)
-    } else {
-      const { error: removeError } = await supabase.storage
-        .from('site-images')
-        .remove([image.storage_path])
-
-      if (removeError) {
-        cleanupWarning = 'Le fichier précédent n’a pas pu être supprimé automatiquement.'
-        console.error('Erreur de suppression de l’ancienne image:', removeError)
-      }
-    }
+    const cleanup = await removeStorageFileIfUnused('site-images', image.storage_path)
+    cleanupWarning = cleanup.warning
   }
 
   return { image: updatedImage, cleanupWarning }
@@ -262,19 +230,8 @@ export async function uploadAdminSiteImage(
 
   let cleanupWarning: string | undefined
   if (image.storage_path) {
-    if (!isSafeStoragePath(image.storage_path)) {
-      cleanupWarning = 'L’ancienne image n’a pas pu être supprimée automatiquement.'
-      console.error('Chemin Storage invalide ignoré lors du remplacement:', image.storage_path)
-    } else {
-      const { error: removeError } = await supabase.storage
-        .from('site-images')
-        .remove([image.storage_path])
-
-      if (removeError) {
-        cleanupWarning = 'L’ancienne image n’a pas pu être supprimée automatiquement.'
-        console.error('Erreur de suppression de l’ancienne image:', removeError)
-      }
-    }
+    const cleanup = await removeStorageFileIfUnused('site-images', image.storage_path)
+    cleanupWarning = cleanup.warning
   }
 
   return { image: updatedImage, cleanupWarning }

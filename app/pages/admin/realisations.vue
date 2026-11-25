@@ -83,29 +83,146 @@ const openEditModal = (project: Project) => {
   isModalOpen.value = true
 }
 
-const setProjectImageUrl = (url: string) => {
-  projectForm.value.imageUrl = url
-  projectForm.value.imageStoragePath = ''
+const removeUnusedUpload = async (storagePath: string) => {
+  if (!storagePath) return
+  await $fetch('/api/admin/upload', {
+    method: 'DELETE',
+    body: { bucket: 'project-images', storagePath }
+  })
 }
 
-const addGalleryImage = (image: { url: string; storagePath: string }) => {
-  projectForm.value.galleryImages.push({ imageUrl: image.url, storagePath: image.storagePath })
+const persistProjectImages = async (changes: Partial<Project>) => {
+  if (!isEditing.value || !currentEditId.value) return
+  imageUploadsInProgress.value++
+  try {
+    await updateProject(currentEditId.value, changes)
+  } finally {
+    imageUploadsInProgress.value = Math.max(0, imageUploadsInProgress.value - 1)
+  }
 }
 
-const removeGalleryImage = (storagePath: string) => {
-  if (!window.confirm('Retirer cette image de la galerie ?')) return
-  projectForm.value.galleryImages = projectForm.value.galleryImages.filter(image => image.storagePath !== storagePath)
+const handleCoverUploaded = async (replacement: { url: string; storagePath: string }) => {
+  const previousPath = projectForm.value.imageStoragePath
+  const coverIndex = projectForm.value.galleryImages.findIndex(image => image.storagePath === previousPath)
+  const nextGallery = [...projectForm.value.galleryImages]
+  if (coverIndex >= 0) {
+    nextGallery[coverIndex] = { imageUrl: replacement.url, storagePath: replacement.storagePath }
+  } else {
+    nextGallery.unshift({ imageUrl: replacement.url, storagePath: replacement.storagePath })
+  }
+
+  let cleanupWarning = ''
+  try {
+    await persistProjectImages({
+      imageUrl: replacement.url,
+      imageStoragePath: replacement.storagePath,
+      galleryImages: nextGallery
+    })
+    projectForm.value.imageUrl = replacement.url
+    projectForm.value.imageStoragePath = replacement.storagePath
+    projectForm.value.galleryImages = nextGallery
+    if (!isEditing.value && previousPath && previousPath !== replacement.storagePath) {
+      try {
+        await removeUnusedUpload(previousPath)
+      } catch (cleanupError) {
+        console.error('Nettoyage de l’ancienne image temporaire impossible:', cleanupError)
+        cleanupWarning = 'La nouvelle image est enregistrée, mais l’ancienne image temporaire n’a pas pu être supprimée.'
+      }
+    }
+    saveError.value = cleanupWarning
+  } catch (error) {
+    console.error('Erreur de remplacement de l’image principale:', error)
+    try {
+      await removeUnusedUpload(replacement.storagePath)
+    } catch (cleanupError) {
+      console.error('Nettoyage de la nouvelle image impossible:', cleanupError)
+    }
+    saveError.value = getApiErrorMessage(error, 'Impossible de remplacer l’image du projet.')
+  }
 }
 
-const replaceGalleryImage = (
+const addGalleryImage = async (image: { url: string; storagePath: string }) => {
+  const nextGallery = [...projectForm.value.galleryImages, { imageUrl: image.url, storagePath: image.storagePath }]
+  try {
+    await persistProjectImages({ galleryImages: nextGallery })
+    projectForm.value.galleryImages = nextGallery
+    saveError.value = ''
+  } catch (error) {
+    console.error('Erreur d’ajout à la galerie:', error)
+    try {
+      await removeUnusedUpload(image.storagePath)
+    } catch (cleanupError) {
+      console.error('Nettoyage de la nouvelle image impossible:', cleanupError)
+    }
+    saveError.value = getApiErrorMessage(error, 'Impossible d’ajouter cette image à la galerie.')
+  }
+}
+
+const replaceGalleryImage = async (
   storagePath: string,
   replacement: { url: string; storagePath: string }
 ) => {
-  projectForm.value.galleryImages = projectForm.value.galleryImages.map(image =>
+  const isCover = projectForm.value.imageStoragePath === storagePath
+  const nextGallery = projectForm.value.galleryImages.map(image =>
     image.storagePath === storagePath
       ? { imageUrl: replacement.url, storagePath: replacement.storagePath }
       : image
   )
+
+  try {
+    await persistProjectImages({
+      galleryImages: nextGallery,
+      ...(isCover ? { imageUrl: replacement.url, imageStoragePath: replacement.storagePath } : {})
+    })
+    projectForm.value.galleryImages = nextGallery
+    if (isCover) {
+      projectForm.value.imageUrl = replacement.url
+      projectForm.value.imageStoragePath = replacement.storagePath
+    }
+    if (!isEditing.value) {
+      try {
+        await removeUnusedUpload(storagePath)
+      } catch (cleanupError) {
+        console.error('Nettoyage de l’ancienne image temporaire impossible:', cleanupError)
+        saveError.value = 'L’image a été remplacée, mais l’ancienne image temporaire n’a pas pu être supprimée.'
+        return
+      }
+    }
+    saveError.value = ''
+  } catch (error) {
+    console.error('Erreur de remplacement d’une image de galerie:', error)
+    try {
+      await removeUnusedUpload(replacement.storagePath)
+    } catch (cleanupError) {
+      console.error('Nettoyage de la nouvelle image impossible:', cleanupError)
+    }
+    saveError.value = getApiErrorMessage(error, 'Impossible de remplacer cette image.')
+  }
+}
+
+const removeGalleryImage = async (storagePath: string) => {
+  const nextGallery = projectForm.value.galleryImages.filter(image => image.storagePath !== storagePath)
+  const isCover = projectForm.value.imageStoragePath === storagePath
+
+  try {
+    if (isCover) {
+      await persistProjectImages({
+        imageUrl: '',
+        imageStoragePath: '',
+        galleryImages: nextGallery
+      })
+      projectForm.value.imageUrl = ''
+      projectForm.value.imageStoragePath = ''
+    } else {
+      await persistProjectImages({ galleryImages: nextGallery })
+    }
+    if (!isEditing.value) await removeUnusedUpload(storagePath)
+    projectForm.value.galleryImages = nextGallery
+    saveError.value = ''
+  } catch (error) {
+    console.error('Erreur de suppression d’une image de galerie:', error)
+    saveError.value = getApiErrorMessage(error, 'Impossible de supprimer cette image.')
+  }
 }
 
 const moveGalleryImage = (index: number, direction: -1 | 1) => {
@@ -120,16 +237,40 @@ const trackImageUpload = (uploading: boolean) => {
   imageUploadsInProgress.value = Math.max(0, imageUploadsInProgress.value + (uploading ? 1 : -1))
 }
 
-const removeProjectCover = () => {
-  if (!projectForm.value.imageUrl || !window.confirm('Supprimer l’image principale du projet ?')) return
+const removeProjectCover = async () => {
+  if (!projectForm.value.imageUrl) return
   const storagePath = projectForm.value.imageStoragePath
-  projectForm.value.imageUrl = ''
-  projectForm.value.imageStoragePath = ''
-  if (storagePath) removeGalleryImageWithoutConfirmation(storagePath)
+  if (storagePath && projectForm.value.galleryImages.some(image => image.storagePath === storagePath)) {
+    await removeGalleryImage(storagePath)
+    return
+  }
+  try {
+    await persistProjectImages({ imageUrl: '', imageStoragePath: '', galleryImages: projectForm.value.galleryImages })
+    projectForm.value.imageUrl = ''
+    projectForm.value.imageStoragePath = ''
+    if (storagePath && !isEditing.value) await removeUnusedUpload(storagePath)
+    saveError.value = ''
+  } catch (error) {
+    console.error('Erreur de suppression de l’image principale:', error)
+    saveError.value = getApiErrorMessage(error, 'Impossible de supprimer l’image principale.')
+  }
 }
 
-const removeGalleryImageWithoutConfirmation = (storagePath: string) => {
-  projectForm.value.galleryImages = projectForm.value.galleryImages.filter(image => image.storagePath !== storagePath)
+const closeProjectModal = async () => {
+  if (!isEditing.value) {
+    const storagePaths = new Set([
+      projectForm.value.imageStoragePath,
+      ...projectForm.value.galleryImages.map(image => image.storagePath)
+    ].filter(Boolean))
+    try {
+      await Promise.all([...storagePaths].map(removeUnusedUpload))
+    } catch (error) {
+      console.error('Nettoyage des images du projet annulé impossible:', error)
+      saveError.value = getApiErrorMessage(error, 'Certaines images temporaires n’ont pas pu être supprimées.')
+      return
+    }
+  }
+  isModalOpen.value = false
 }
 
 const saveProject = async () => {
@@ -290,7 +431,7 @@ useSeoMeta({
     <div
       v-if="isModalOpen"
       class="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
-      @click.self="isModalOpen = false"
+      @click.self="closeProjectModal"
     >
       <div class="bg-white border border-neutral-300 rounded-xs max-w-xl w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto">
         <div class="flex items-center justify-between border-b border-neutral-200 pb-3">
@@ -299,7 +440,7 @@ useSeoMeta({
           </h3>
           <button
             type="button"
-            @click="isModalOpen = false"
+            @click="closeProjectModal"
             class="text-neutral-400 hover:text-black"
           >
             <UIcon name="i-heroicons-x-mark" class="w-5 h-5" />
@@ -368,23 +509,16 @@ useSeoMeta({
           <div>
             <ImageUpload
               :model-value="projectForm.imageUrl"
-              @update:model-value="setProjectImageUrl"
-              @uploaded="projectForm.imageStoragePath = $event.storagePath"
+              @uploaded="handleCoverUploaded"
+              @delete="removeProjectCover"
               @uploading="trackImageUpload"
-              label="Photo principal du projet"
-              hint="Téléchargez une photo de haute qualité depuis votre ordinateur ou collez une URL"
+              label="Photo principale du projet"
+              hint="Ajoutez une image, remplacez-la ou supprimez-la."
               preview-size="medium"
               :max-file-size="5"
+              :disabled="imageUploadsInProgress > 0"
               bucket="project-images"
             />
-            <button
-              v-if="projectForm.imageUrl"
-              type="button"
-              class="mt-2 text-xs font-semibold text-red-700 underline"
-              @click="removeProjectCover"
-            >
-              Supprimer l’image principale
-            </button>
           </div>
           <div class="space-y-2">
             <label class="block text-[11px] font-bold text-black uppercase tracking-wider">Galerie du projet</label>
@@ -392,7 +526,7 @@ useSeoMeta({
               model-value=""
               bucket="project-images"
               compact
-              :disabled="projectForm.galleryImages.length >= 20"
+              :disabled="projectForm.galleryImages.length >= 20 || imageUploadsInProgress > 0"
               label="Ajouter une image à la galerie"
               hint="Les images importées seront enregistrées dans la galerie Supabase du projet."
               @uploading="trackImageUpload"
@@ -413,8 +547,10 @@ useSeoMeta({
                   compact
                   preview-size="small"
                   label="Image de galerie"
+                  :disabled="imageUploadsInProgress > 0"
                   @uploading="trackImageUpload"
                   @uploaded="replaceGalleryImage(image.storagePath, $event)"
+                  @delete="removeGalleryImage(image.storagePath)"
                 />
                 <div class="flex items-start gap-1">
                   <button
@@ -434,13 +570,6 @@ useSeoMeta({
                     @click="moveGalleryImage(index, 1)"
                   >
                     ↓
-                  </button>
-                  <button
-                    type="button"
-                    class="rounded-sm border border-red-200 px-2 py-1 text-xs text-red-700"
-                    @click="removeGalleryImage(image.storagePath)"
-                  >
-                    Retirer
                   </button>
                 </div>
               </div>
@@ -493,7 +622,7 @@ useSeoMeta({
           <div class="pt-3 border-t border-neutral-200 flex justify-end gap-2">
             <button
               type="button"
-              @click="isModalOpen = false"
+              @click="closeProjectModal"
               class="px-4 py-2 rounded-xs text-xs font-semibold uppercase tracking-wider text-neutral-600 hover:text-black"
             >
               Annuler

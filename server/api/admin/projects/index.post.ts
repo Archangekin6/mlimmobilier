@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { getPublicStoragePath } from '~~/server/utils/storage'
+import { getPublicStoragePath, removeStorageFileIfUnused } from '~~/server/utils/storage'
 import { supabaseAdmin } from '~~/server/utils/supabase'
 
 type ProjectBody = {
@@ -123,8 +123,10 @@ export default defineEventHandler(async (event) => {
     })))
     if (imageError) {
       await supabase.from('projects').delete().eq('id', project.id)
-      const { error: storageError } = await supabase.storage.from('project-images').remove(projectImages.map(image => image.storage_path))
-      if (storageError) console.error('Nettoyage de l’image du projet impossible:', storageError.message)
+      for (const image of projectImages) {
+        const cleanup = await removeStorageFileIfUnused('project-images', image.storage_path)
+        if (cleanup.warning) console.error(cleanup.warning)
+      }
       console.error('Erreur d’enregistrement de la galerie du projet:', imageError.message)
       throw createError({ statusCode: 500, statusMessage: 'Impossible d’enregistrer l’image du projet' })
     }

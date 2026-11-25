@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import ImageUpload from '~/components/common/ImageUpload.vue'
 import { useSiteData } from '~/composables/useSiteData'
 
 definePageMeta({
@@ -11,71 +12,55 @@ const { settings, saveSettings } = useSiteData()
 const form = ref({ ...settings.value })
 const savedSuccess = ref(false)
 const savedError = ref('')
+const isLogoSaving = ref(false)
+const isLogoUploading = ref(false)
 
-// Logo upload
-const logoTab = ref<'url' | 'upload'>('url')
-const logoFileInput = ref<HTMLInputElement | null>(null)
-const isUploadingLogo = ref(false)
-const logoUploadError = ref('')
-const logoUploadSuccess = ref(false)
+const saveLogoReference = async (logoUrl: string) => {
+  await saveSettings({ ...settings.value, logoUrl })
+  form.value.logoUrl = logoUrl
+}
 
-const triggerLogoFileInput = () => logoFileInput.value?.click()
-
-const handleLogoUpload = async (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  
-  if (!file) return
-
-  // Validation
-  if (!file.type.startsWith('image/')) {
-    logoUploadError.value = 'Veuillez sélectionner une image valide'
-    return
-  }
-
-  if (file.size > 2 * 1024 * 1024) {
-    logoUploadError.value = 'L\'image doit peser moins de 2MB'
-    return
-  }
-
-  logoUploadError.value = ''
-  isUploadingLogo.value = true
-
+const handleLogoUploaded = async (image: { url: string; storagePath: string }) => {
+  const previousUrl = settings.value.logoUrl
+  isLogoSaving.value = true
+  savedError.value = ''
   try {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('bucket', 'site-images')
-    const data = await $fetch<{ url: string }>('/api/admin/upload', {
-      method: 'POST',
-      body: formData
-    })
-    form.value.logoUrl = data.url
-    logoUploadSuccess.value = true
-    
-    setTimeout(() => {
-      logoUploadSuccess.value = false
-    }, 3000)
+    await saveLogoReference(image.url)
+    savedSuccess.value = true
   } catch (error) {
-    if (typeof error === 'object' && error !== null && 'data' in error) {
-      const data = error.data
-      logoUploadError.value = typeof data === 'object' && data !== null && 'statusMessage' in data && typeof data.statusMessage === 'string'
-        ? data.statusMessage
-        : 'Erreur lors du téléchargement de l’image'
-    } else {
-      logoUploadError.value = error instanceof Error && error.message
-        ? error.message
-        : 'Erreur lors du téléchargement de l’image'
+    console.error('Erreur de remplacement du logo:', error)
+    try {
+      await $fetch('/api/admin/upload', {
+        method: 'DELETE',
+        body: { bucket: 'site-images', storagePath: image.storagePath }
+      })
+    } catch (cleanupError) {
+      console.error('Nettoyage du nouveau logo impossible:', cleanupError)
     }
-    console.error(error)
+    form.value.logoUrl = previousUrl
+    savedError.value = error instanceof Error ? error.message : 'Impossible de remplacer le logo.'
   } finally {
-    isUploadingLogo.value = false
-    if (logoFileInput.value) {
-      logoFileInput.value.value = ''
-    }
+    isLogoSaving.value = false
+  }
+}
+
+const removeLogo = async () => {
+  if (isLogoSaving.value) return
+  isLogoSaving.value = true
+  savedError.value = ''
+  try {
+    await saveLogoReference('')
+    savedSuccess.value = true
+  } catch (error) {
+    console.error('Erreur de suppression du logo:', error)
+    savedError.value = error instanceof Error ? error.message : 'Impossible de supprimer le logo.'
+  } finally {
+    isLogoSaving.value = false
   }
 }
 
 const handleSave = () => {
+  if (isLogoSaving.value || isLogoUploading.value) return
   savedError.value = ''
   void saveSettings(form.value).then(() => {
     savedSuccess.value = true
@@ -108,6 +93,7 @@ useSeoMeta({
       <button
         type="button"
         @click="handleSave"
+        :disabled="isLogoSaving || isLogoUploading"
         class="inline-flex items-center gap-1.5 bg-black hover:bg-neutral-800 text-white font-bold text-xs uppercase tracking-wider px-5 py-2.5 rounded-xs transition-colors"
       >
         <UIcon name="i-heroicons-check" class="w-4 h-4 text-white" />
@@ -154,96 +140,20 @@ useSeoMeta({
 
         <!-- Logo de l'entreprise -->
         <div class="space-y-3 border-t border-neutral-100 pt-4">
-          <label class="block text-[11px] font-bold text-black uppercase tracking-wider">
-            Logo de l'entreprise
-          </label>
-          <p class="text-[10px] text-neutral-500">
-            Téléchargez le logo depuis votre ordinateur ou collez une URL.             Formats acceptés : PNG, JPG, WebP, GIF ou AVIF. Hauteur recommandée : 56px.
-          </p>
-
-          <!-- Tabs -->
-          <div class="flex gap-2 border-b border-neutral-200">
-            <button
-              type="button"
-              @click="logoTab = 'url'"
-              :class="[
-                'px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 -mb-[1px]',
-                logoTab === 'url'
-                  ? 'text-black border-b-black'
-                  : 'text-neutral-500 border-b-transparent hover:text-neutral-700'
-              ]"
-            >
-              Lien URL
-            </button>
-            <button
-              type="button"
-              @click="logoTab = 'upload'"
-              :class="[
-                'px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 -mb-[1px]',
-                logoTab === 'upload'
-                  ? 'text-black border-b-black'
-                  : 'text-neutral-500 border-b-transparent hover:text-neutral-700'
-              ]"
-            >
-              Télécharger
-            </button>
-          </div>
-
-          <!-- URL Tab -->
-          <div v-if="logoTab === 'url'" class="space-y-3">
-            <input
-              v-model="form.logoUrl"
-              type="url"
-              class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
-              placeholder="https://exemple.com/logo.png"
-            />
-          </div>
-
-          <!-- Upload Tab -->
-          <div v-if="logoTab === 'upload'" class="space-y-3">
-            <input
-              ref="logoFileInput"
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
-              @change="handleLogoUpload"
-              class="hidden"
-            />
-            
-            <div
-              @click="triggerLogoFileInput"
-              class="border-2 border-dashed border-neutral-300 hover:border-neutral-400 rounded-xs p-6 text-center cursor-pointer transition-colors bg-neutral-50 hover:bg-neutral-100"
-            >
-              <div class="flex flex-col items-center gap-2">
-                <UIcon name="i-heroicons-cloud-arrow-up" class="w-8 h-8 text-neutral-400" />
-                <div>
-                  <p class="text-xs font-bold text-neutral-700">Cliquez pour uploader</p>
-                  <p class="text-[10px] text-neutral-500">PNG, JPG, GIF jusqu'à 2MB</p>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="isUploadingLogo" class="flex items-center gap-2 text-xs text-neutral-700">
-              <UIcon name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
-              <span>Téléchargement en cours...</span>
-            </div>
-
-            <div v-if="logoUploadError" class="p-2.5 rounded-xs bg-red-50 border border-red-200 text-red-700 text-xs">
-              {{ logoUploadError }}
-            </div>
-
-            <div v-if="logoUploadSuccess" class="p-2.5 rounded-xs bg-green-50 border border-green-200 text-green-700 text-xs">
-              Image téléchargée avec succès !
-            </div>
-          </div>
-
-          <!-- Preview -->
-          <div v-if="form.logoUrl" class="border border-neutral-200 rounded-xs bg-neutral-50 p-3 flex items-center justify-center overflow-hidden w-32 h-20">
-            <img
-              :src="form.logoUrl"
-              alt="Logo de l'entreprise"
-              class="max-h-full max-w-full object-contain"
-            />
-          </div>
+          <ImageUpload
+            :model-value="form.logoUrl"
+            bucket="site-images"
+            label="Logo de l'entreprise"
+            hint="PNG, JPG, WebP, GIF ou AVIF. Hauteur recommandée : 56 px."
+            preview-size="small"
+            :max-file-size="2"
+            :allow-url="true"
+            :disabled="isLogoSaving || isLogoUploading"
+            @update:model-value="form.logoUrl = $event"
+            @uploaded="handleLogoUploaded"
+            @uploading="isLogoUploading = $event"
+            @delete="removeLogo"
+          />
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
