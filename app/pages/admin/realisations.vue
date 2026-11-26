@@ -32,11 +32,10 @@ const projectForm = ref({
   date: '',
   description: '',
   fullDescription: '',
-  client: '',
   imageUrl: '',
   imageStoragePath: '',
   galleryImages: [] as Array<{ imageUrl: string; storagePath: string }>,
-  published: true,
+  published: false,
   featured: false,
   displayOrder: 0
 })
@@ -51,11 +50,10 @@ const openAddModal = () => {
     date: '',
     description: '',
     fullDescription: '',
-    client: '',
     imageUrl: '',
     imageStoragePath: '',
     galleryImages: [],
-    published: true,
+    published: false,
     featured: false,
     displayOrder: projects.value.length
   }
@@ -72,7 +70,6 @@ const openEditModal = (project: Project) => {
     date: project.date,
     description: project.description,
     fullDescription: project.fullDescription || '',
-    client: project.client || '',
     imageUrl: project.imageUrl,
     imageStoragePath: project.imageStoragePath || '',
     galleryImages: project.galleryImages || [],
@@ -274,8 +271,12 @@ const closeProjectModal = async () => {
 }
 
 const saveProject = async () => {
-  if (!projectForm.value.title || !projectForm.value.location) {
-    alert('Veuillez renseigner au moins le titre et la localisation du projet.')
+  if (!projectForm.value.title.trim() || !projectForm.value.description.trim()) {
+    alert('Veuillez renseigner le titre et la description de la réalisation.')
+    return
+  }
+  if (!isEditing.value && (!projectForm.value.imageUrl || !projectForm.value.imageStoragePath)) {
+    alert('Ajoutez une image principale depuis le bucket des réalisations avant de créer la fiche.')
     return
   }
 
@@ -348,7 +349,23 @@ useSeoMeta({
         <span>{{ projects.length }} projet(s) enregistré(s)</span>
       </div>
 
-      <div class="divide-y divide-neutral-100">
+      <div v-if="projects.length === 0" class="px-6 py-12 text-center">
+        <UIcon name="i-heroicons-photo" class="mx-auto mb-3 h-9 w-9 text-neutral-400" />
+        <h3 class="text-sm font-bold text-neutral-900">Aucune réalisation enregistrée</h3>
+        <p class="mx-auto mt-2 max-w-md text-xs text-neutral-500">
+          Ajoutez vos projets ici. Ils resteront en brouillon jusqu’à leur publication.
+        </p>
+        <button
+          type="button"
+          @click="openAddModal"
+          class="mt-4 inline-flex items-center gap-1.5 bg-black px-4 py-2 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-neutral-800"
+        >
+          <UIcon name="i-heroicons-plus" class="h-4 w-4 text-white" />
+          Ajouter une réalisation
+        </button>
+      </div>
+
+      <div v-else class="divide-y divide-neutral-100">
         <div
           v-for="project in projects"
           :key="project.id"
@@ -356,8 +373,9 @@ useSeoMeta({
         >
           <!-- Left: Thumbnail & Info -->
           <div class="flex items-start gap-4">
-            <div class="w-20 h-16 rounded-xs overflow-hidden bg-neutral-900 shrink-0 border border-neutral-200">
-              <img :src="project.imageUrl" :alt="project.title" class="w-full h-full object-cover" />
+            <div class="flex h-16 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xs border border-neutral-200 bg-neutral-900">
+              <img v-if="project.imageUrl" :src="project.imageUrl" :alt="project.title" class="w-full h-full object-cover" />
+              <UIcon v-else name="i-heroicons-photo" class="m-auto h-6 w-6 text-neutral-500" />
             </div>
 
             <div class="space-y-1">
@@ -370,7 +388,7 @@ useSeoMeta({
                   :class="project.published ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-500 border border-neutral-200'"
                   class="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-xs"
                 >
-                  {{ project.published ? 'Publié' : 'Masqué' }}
+                  {{ project.published ? 'Publié' : 'Brouillon' }}
                 </span>
                 <span v-if="project.featured" class="border border-black text-black text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-xs">
                   En vedette
@@ -379,12 +397,12 @@ useSeoMeta({
 
               <p class="text-xs text-neutral-600 line-clamp-1 max-w-xl">{{ project.description }}</p>
 
-              <div class="text-[11px] text-neutral-500 flex items-center gap-4">
-                <span class="flex items-center gap-1">
+              <div v-if="project.location || project.date" class="text-[11px] text-neutral-500 flex items-center gap-4">
+                <span v-if="project.location" class="flex items-center gap-1">
                   <UIcon name="i-heroicons-map-pin" class="w-3.5 h-3.5 text-neutral-400" />
                   {{ project.location }}
                 </span>
-                <span class="flex items-center gap-1 font-mono">
+                <span v-if="project.date" class="flex items-center gap-1 font-mono">
                   <UIcon name="i-heroicons-calendar" class="w-3.5 h-3.5 text-neutral-400" />
                   {{ project.date }}
                 </span>
@@ -466,44 +484,31 @@ useSeoMeta({
                 v-model="projectForm.category"
                 class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
               >
-                <option value="btp">BTP & Construction</option>
-                <option value="electrification">Électrification & Réseaux</option>
-                <option value="gestion">Gestion Immobilière</option>
+                <option value="btp">BTP – Bâtiment et travaux publics</option>
+                <option value="electrification">Électrification et distribution électrique</option>
+                <option value="gestion">Gestion immobilière</option>
               </select>
             </div>
 
             <div>
-              <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Localisation *</label>
+              <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Localisation</label>
               <input
                 v-model="projectForm.location"
                 type="text"
-                required
                 class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
-                placeholder="Abidjan - Cocody Angré"
+                placeholder="Facultatif"
               />
             </div>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Année</label>
-              <input
-                v-model="projectForm.date"
-                type="text"
-                class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none font-mono"
-                placeholder="Année du projet"
-              />
-            </div>
-
-            <div>
-              <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Maître d'ouvrage</label>
-              <input
-                v-model="projectForm.client"
-                type="text"
-                class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
-                placeholder="Client privé..."
-              />
-            </div>
+          <div>
+            <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Date de réalisation</label>
+            <input
+              v-model="projectForm.date"
+              type="date"
+              class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none font-mono"
+            />
+            <p class="mt-1 text-[10px] text-neutral-500">Laissez vide si la date n’est pas connue.</p>
           </div>
 
           <div>

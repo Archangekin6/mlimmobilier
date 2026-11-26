@@ -37,6 +37,21 @@ function validateStoragePath(value: unknown): string | null {
   return value
 }
 
+function validateProjectDate(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null
+  const date = typeof value === 'string' ? new Date(`${value}T00:00:00.000Z`) : null
+  if (
+    typeof value !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+    !date ||
+    !Number.isFinite(date.getTime()) ||
+    date.toISOString().slice(0, 10) !== value
+  ) {
+    throw createError({ statusCode: 400, statusMessage: 'Date de réalisation invalide' })
+  }
+  return value
+}
+
 function validateGalleryImages(value: unknown): Array<{ image_url: string; storage_path: string }> {
   if (value === undefined) return []
   if (!Array.isArray(value) || value.length > 20) {
@@ -66,12 +81,13 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<ProjectBody>(event)
   if (
     typeof body?.title !== 'string' || !body.title.trim() || body.title.length > 200 ||
-    typeof body.location !== 'string' || body.location.length > 200 ||
+    (body.location !== undefined && body.location !== null && (typeof body.location !== 'string' || body.location.length > 200)) ||
     !isProjectCategory(body.category) ||
-    typeof body.description !== 'string' || body.description.length > 5000 ||
-    (body.fullDescription !== undefined && typeof body.fullDescription !== 'string') ||
-    (body.client !== undefined && typeof body.client !== 'string') ||
-    (body.imageUrl !== undefined && typeof body.imageUrl !== 'string') ||
+    typeof body.description !== 'string' || !body.description.trim() || body.description.length > 5000 ||
+    (body.fullDescription !== undefined && body.fullDescription !== null && (typeof body.fullDescription !== 'string' || body.fullDescription.length > 5000)) ||
+    (body.client !== undefined && body.client !== null && (typeof body.client !== 'string' || body.client.length > 200)) ||
+    typeof body.imageUrl !== 'string' || !body.imageUrl.trim() ||
+    (body.date !== undefined && body.date !== null && (typeof body.date !== 'string' || body.date.length > 100)) ||
     (body.published !== undefined && typeof body.published !== 'boolean') ||
     (body.featured !== undefined && typeof body.featured !== 'boolean') ||
     (body.displayOrder !== undefined && (!Number.isInteger(body.displayOrder) || typeof body.displayOrder !== 'number'))
@@ -79,10 +95,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Données de projet invalides' })
   }
 
+  const projectDate = validateProjectDate(body.date)
   const imageStoragePath = validateStoragePath(body.imageStoragePath)
   if (
-    imageStoragePath &&
-    (typeof body.imageUrl !== 'string' || getPublicStoragePath('project-images', body.imageUrl) !== imageStoragePath)
+    !imageStoragePath ||
+    getPublicStoragePath('project-images', body.imageUrl) !== imageStoragePath
   ) {
     throw createError({ statusCode: 400, statusMessage: 'L’image ne correspond pas au bucket project-images' })
   }
@@ -96,10 +113,10 @@ export default defineEventHandler(async (event) => {
     description: typeof body.fullDescription === 'string' ? body.fullDescription.trim() : body.description.trim(),
     full_description: typeof body.fullDescription === 'string' ? body.fullDescription.trim() : null,
     service_type: body.category,
-    location: body.location.trim() || null,
-    project_date: typeof body.date === 'string' ? body.date.trim() : null,
+    location: typeof body.location === 'string' ? body.location.trim() || null : null,
+    project_date: projectDate,
     client_name: typeof body.client === 'string' ? body.client.trim() : null,
-    cover_image_url: typeof body.imageUrl === 'string' ? body.imageUrl.trim() : null,
+    cover_image_url: body.imageUrl.trim(),
     published: body.published === true,
     featured: body.featured === true,
     display_order: typeof body.displayOrder === 'number' ? body.displayOrder : 0
@@ -111,8 +128,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const projectImages = [...galleryImages]
-  if (imageStoragePath && typeof body.imageUrl === 'string' && !projectImages.some(image => image.storage_path === imageStoragePath)) {
-    projectImages.unshift({ image_url: body.imageUrl, storage_path: imageStoragePath })
+  if (!projectImages.some(image => image.storage_path === imageStoragePath)) {
+    projectImages.unshift({
+      image_url: body.imageUrl.trim(),
+      storage_path: imageStoragePath
+    })
   }
   if (projectImages.length) {
     const { error: imageError } = await supabase.from('project_images').insert(projectImages.map((image, index) => ({

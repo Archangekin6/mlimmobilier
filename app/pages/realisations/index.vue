@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSiteData, type Project } from '~/composables/useSiteData'
 
@@ -26,6 +26,25 @@ const filteredProjects = computed(() => {
   return publishedProjects.value.filter(p => p.category === selectedCategory.value)
 })
 
+const projectCountByCategory = computed(() => ({
+  btp: publishedProjects.value.filter(project => project.category === 'btp').length,
+  electrification: publishedProjects.value.filter(project => project.category === 'electrification').length,
+  gestion: publishedProjects.value.filter(project => project.category === 'gestion').length
+}))
+
+const categoryLabels: Record<Project['category'], string> = {
+  btp: 'BTP – Bâtiment et travaux publics',
+  electrification: 'Électrification et distribution électrique',
+  gestion: 'Gestion immobilière'
+}
+
+const formatProjectDate = (date: string) => {
+  const parsedDate = new Date(`${date}T00:00:00`)
+  return Number.isNaN(parsedDate.getTime())
+    ? date
+    : new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }).format(parsedDate)
+}
+
 const openProjectModal = (project: Project) => {
   activeModalProject.value = project
   currentPhotoIndex.value = 0
@@ -35,9 +54,19 @@ const closeProjectModal = () => {
   activeModalProject.value = null
 }
 
+watch(
+  () => [route.query.project, publishedProjects.value] as const,
+  ([projectId, projects]) => {
+    if (typeof projectId !== 'string') return
+    const project = projects.find(item => item.id === projectId)
+    if (project) openProjectModal(project)
+  },
+  { immediate: true }
+)
+
 useSeoMeta({
-  title: 'Nos Réalisations | Galerie Photos BTP & Énergie Abidjan',
-  description: `Découvrez les chantiers et réalisations de ${settings.value.companyName} à Abidjan.`
+  title: 'Nos réalisations | ML Immobilier SARL',
+  description: `Découvrez les réalisations publiées de ${settings.value.companyName} dans ses trois domaines d’activité.`
 })
 </script>
 
@@ -47,10 +76,10 @@ useSeoMeta({
     <section class="bg-gradient-to-b from-white via-neutral-50/60 to-white py-16 lg:py-20 border-b border-neutral-200 text-center">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-3">
         <h1 class="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-neutral-950">
-          La Preuve par nos Réalisations
+          Nos réalisations
         </h1>
         <p class="text-neutral-600 text-xs sm:text-sm max-w-2xl mx-auto leading-relaxed">
-          Explorez nos projets récents à travers Abidjan et la Côte d'Ivoire. Rigueur d'exécution, respect des normes et finitions professionnelles.
+          Consultez les projets publiés dans nos trois domaines d’activité.
         </p>
       </div>
     </section>
@@ -58,7 +87,7 @@ useSeoMeta({
     <!-- Filters & Gallery -->
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <!-- Filter buttons: segmented corporate bar -->
-      <div class="flex flex-wrap items-center justify-center gap-1.5 mb-10 bg-neutral-100 p-1 border border-neutral-200 rounded-sm max-w-fit mx-auto">
+      <div class="flex w-fit max-w-full flex-wrap items-center justify-center gap-1.5 mb-10 bg-neutral-100 p-1 border border-neutral-200 rounded-sm mx-auto">
         <button
           type="button"
           @click="selectedCategory = 'all'"
@@ -73,7 +102,7 @@ useSeoMeta({
           :class="selectedCategory === 'btp' ? 'bg-neutral-900 text-white font-bold' : 'text-neutral-600 hover:text-black'"
           class="px-4 py-1.5 rounded-sm text-xs uppercase tracking-wider transition-colors"
         >
-          BTP & Construction
+          BTP – Bâtiment et travaux publics ({{ projectCountByCategory.btp }})
         </button>
         <button
           type="button"
@@ -81,7 +110,7 @@ useSeoMeta({
           :class="selectedCategory === 'electrification' ? 'bg-neutral-900 text-white font-bold' : 'text-neutral-600 hover:text-black'"
           class="px-4 py-1.5 rounded-sm text-xs uppercase tracking-wider transition-colors"
         >
-          Électrification & Réseaux
+          Électrification et distribution électrique ({{ projectCountByCategory.electrification }})
         </button>
         <button
           type="button"
@@ -89,7 +118,7 @@ useSeoMeta({
           :class="selectedCategory === 'gestion' ? 'bg-neutral-900 text-white font-bold' : 'text-neutral-600 hover:text-black'"
           class="px-4 py-1.5 rounded-sm text-xs uppercase tracking-wider transition-colors"
         >
-          Gestion Immobilière
+          Gestion immobilière ({{ projectCountByCategory.gestion }})
         </button>
       </div>
 
@@ -98,15 +127,19 @@ useSeoMeta({
         <div
           v-for="project in filteredProjects"
           :key="project.id"
-          class="bg-white rounded-md overflow-hidden border border-neutral-200 hover:border-neutral-400 hover:shadow-md transition-all flex flex-col justify-between group cursor-pointer"
-          @click="openProjectModal(project)"
+          class="bg-white rounded-md overflow-hidden border border-neutral-200 hover:border-neutral-400 hover:shadow-md transition-all flex flex-col justify-between group"
         >
           <div class="relative h-60 overflow-hidden bg-neutral-100">
             <img
+              v-if="project.imageUrl"
               :src="project.imageUrl"
               :alt="project.title"
+              loading="lazy"
               class="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
             />
+            <div v-else class="flex h-full items-center justify-center text-neutral-400">
+              <UIcon name="i-heroicons-photo" class="h-10 w-10" />
+            </div>
             <div class="absolute inset-0 bg-gradient-to-t from-neutral-950/70 via-transparent to-transparent"></div>
             
             <div class="absolute top-3 left-3">
@@ -115,13 +148,13 @@ useSeoMeta({
               </span>
             </div>
 
-            <div class="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white text-xs">
-              <div class="flex items-center gap-1.5 font-medium text-neutral-200">
+            <div v-if="project.location || project.date" class="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white text-xs">
+              <div v-if="project.location" class="flex items-center gap-1.5 font-medium text-neutral-200">
                 <UIcon name="i-heroicons-map-pin" class="w-3.5 h-3.5 text-white" />
                 <span>{{ project.location }}</span>
               </div>
-              <span class="bg-neutral-900/80 border border-neutral-700 text-neutral-200 font-mono px-2 py-0.5 rounded-sm text-[10px]">
-                {{ project.date }}
+              <span v-if="project.date" class="bg-neutral-900/80 border border-neutral-700 text-neutral-200 font-mono px-2 py-0.5 rounded-sm text-[10px]">
+                {{ formatProjectDate(project.date) }}
               </span>
             </div>
           </div>
@@ -137,14 +170,12 @@ useSeoMeta({
             </div>
 
             <div class="pt-3 border-t border-neutral-100 flex items-center justify-between text-xs">
-              <span class="text-neutral-500 text-[11px]">
-                Client : {{ project.client || 'Privé' }}
-              </span>
               <button
                 type="button"
-                class="text-neutral-900 font-bold text-[11px] uppercase tracking-wider inline-flex items-center gap-1 group-hover:underline"
+                class="ml-auto text-neutral-900 font-bold text-[11px] uppercase tracking-wider inline-flex items-center gap-1 group-hover:underline"
+                @click="openProjectModal(project)"
               >
-                <span>Galerie</span>
+                <span>Voir le projet</span>
                 <UIcon name="i-heroicons-arrow-right" class="w-3 h-3" />
               </button>
             </div>
@@ -154,9 +185,23 @@ useSeoMeta({
 
       <!-- Empty state if no projects -->
       <div v-if="filteredProjects.length === 0" class="text-center py-16 bg-neutral-50 rounded-md border border-neutral-200 p-8">
-        <UIcon name="i-heroicons-photo" class="w-10 h-10 text-neutral-400 mx-auto mb-2" />
-        <h3 class="text-sm font-bold text-neutral-900 uppercase tracking-wider">Aucun projet dans cette catégorie</h3>
-        <p class="text-xs text-neutral-500 mt-1">Sélectionnez une autre catégorie ci-dessus.</p>
+        <UIcon name="i-heroicons-photo" class="w-10 h-10 text-neutral-400 mx-auto mb-3" />
+        <h3 class="text-base font-bold text-neutral-900">
+          {{ publishedProjects.length === 0 ? 'Aucune réalisation publiée pour le moment' : 'Aucune réalisation dans cette catégorie' }}
+        </h3>
+        <p class="text-sm text-neutral-500 mt-2 max-w-lg mx-auto">
+          {{ publishedProjects.length === 0
+            ? 'Les réalisations validées apparaîtront ici dès leur publication.'
+            : 'Aucun projet publié ne correspond à ce filtre. Choisissez une autre catégorie.' }}
+        </p>
+        <button
+          v-if="publishedProjects.length > 0 && selectedCategory !== 'all'"
+          type="button"
+          class="mt-4 text-xs font-bold uppercase tracking-wider text-neutral-900 underline underline-offset-4"
+          @click="selectedCategory = 'all'"
+        >
+          Voir toutes les catégories
+        </button>
       </div>
     </section>
 
@@ -166,16 +211,17 @@ useSeoMeta({
       class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
       @click.self="closeProjectModal"
     >
-      <div class="bg-white rounded-md max-w-3xl w-full overflow-hidden border border-neutral-200 shadow-xl flex flex-col max-h-[90vh]">
+      <div role="dialog" aria-modal="true" :aria-label="activeModalProject.title" class="bg-white rounded-md max-w-3xl w-full overflow-hidden border border-neutral-200 shadow-xl flex flex-col max-h-[90vh]">
         <!-- Modal Header: Clean White -->
         <div class="p-4 sm:p-5 bg-white text-neutral-900 flex items-center justify-between border-b border-neutral-200">
           <div>
-            <span class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">{{ activeModalProject.category }}</span>
+            <span class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">{{ categoryLabels[activeModalProject.category] }}</span>
             <h2 class="text-lg sm:text-xl font-black text-neutral-950 mt-0.5">{{ activeModalProject.title }}</h2>
           </div>
           <button
             type="button"
             @click="closeProjectModal"
+            aria-label="Fermer les détails du projet"
             class="p-1.5 text-neutral-500 hover:text-black rounded-sm hover:bg-neutral-100 transition-colors"
           >
             <UIcon name="i-heroicons-x-mark" class="w-5 h-5" />
@@ -187,10 +233,15 @@ useSeoMeta({
           <!-- Main Photo Viewer -->
           <div class="relative rounded-sm overflow-hidden bg-neutral-100 h-56 sm:h-72 border border-neutral-200">
             <img
+              v-if="(activeModalProject.gallery && activeModalProject.gallery.length > 0) ? activeModalProject.gallery[currentPhotoIndex] : activeModalProject.imageUrl"
               :src="(activeModalProject.gallery && activeModalProject.gallery.length > 0) ? activeModalProject.gallery[currentPhotoIndex] : activeModalProject.imageUrl"
               :alt="activeModalProject.title"
+              loading="lazy"
               class="w-full h-full object-cover"
             />
+            <div v-else class="flex h-full items-center justify-center text-neutral-400">
+              <UIcon name="i-heroicons-photo" class="h-10 w-10" />
+            </div>
           </div>
 
           <!-- Thumbnails if gallery exists -->
@@ -211,18 +262,14 @@ useSeoMeta({
           </div>
 
           <!-- Project Specs -->
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-sm bg-neutral-50 border border-neutral-200 text-xs">
-            <div>
+          <div v-if="activeModalProject.location || activeModalProject.date" class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-sm bg-neutral-50 border border-neutral-200 text-xs">
+            <div v-if="activeModalProject.location">
               <span class="text-neutral-500 block text-[10px] uppercase tracking-wider">Localisation :</span>
               <span class="font-bold text-neutral-950">{{ activeModalProject.location }}</span>
             </div>
-            <div>
-              <span class="text-neutral-500 block text-[10px] uppercase tracking-wider">Année :</span>
-              <span class="font-bold text-neutral-950">{{ activeModalProject.date }}</span>
-            </div>
-            <div>
-              <span class="text-neutral-500 block text-[10px] uppercase tracking-wider">Maître d'ouvrage :</span>
-              <span class="font-bold text-neutral-950">{{ activeModalProject.client || 'Privé' }}</span>
+            <div v-if="activeModalProject.date">
+              <span class="text-neutral-500 block text-[10px] uppercase tracking-wider">Date de réalisation :</span>
+              <span class="font-bold text-neutral-950">{{ formatProjectDate(activeModalProject.date) }}</span>
             </div>
           </div>
 

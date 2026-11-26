@@ -25,6 +25,13 @@ const filteredProjects = computed(() => {
   return publishedProjects.value.filter(p => p.category === activeCategory.value).slice(0, 6)
 })
 
+const formatProjectDate = (date: string) => {
+  const parsedDate = new Date(`${date}T00:00:00`)
+  return Number.isNaN(parsedDate.getTime())
+    ? date
+    : new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }).format(parsedDate)
+}
+
 const publicStats = computed(() => [
   { value: settings.value.statsYears, label: 'Ans d’expérience', prefix: '+', suffix: '' },
   { value: settings.value.statsProjects, label: 'Chantiers livrés', prefix: '+', suffix: '' },
@@ -227,7 +234,7 @@ useSeoMeta({
       </div>
 
       <!-- Projects Grid -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div v-if="filteredProjects.length" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <div
           v-for="project in filteredProjects"
           :key="project.id"
@@ -235,23 +242,28 @@ useSeoMeta({
         >
           <div class="relative h-56 overflow-hidden bg-neutral-100">
             <img
+              v-if="project.imageUrl"
               :src="project.imageUrl"
               :alt="project.title"
+              loading="lazy"
               class="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
             />
+            <div v-else class="flex h-full items-center justify-center text-neutral-400">
+              <UIcon name="i-heroicons-photo" class="h-10 w-10" />
+            </div>
             <div class="absolute inset-0 bg-gradient-to-t from-neutral-950/70 via-transparent to-transparent"></div>
             <div class="absolute top-3 left-3">
               <span class="bg-neutral-900/90 text-white text-[10px] font-bold px-2.5 py-1 rounded-sm uppercase tracking-wider shadow-xs">
                 {{ project.category.toUpperCase() }}
               </span>
             </div>
-            <div class="absolute bottom-3 left-3 right-3 text-white flex items-center justify-between text-xs">
-              <div class="flex items-center gap-1.5 font-medium text-neutral-200">
+            <div v-if="project.location || project.date" class="absolute bottom-3 left-3 right-3 text-white flex items-center justify-between text-xs">
+              <div v-if="project.location" class="flex items-center gap-1.5 font-medium text-neutral-200">
                 <UIcon name="i-heroicons-map-pin" class="w-3.5 h-3.5 text-white" />
                 <span>{{ project.location }}</span>
               </div>
-              <span class="text-[10px] font-mono bg-neutral-900/80 text-neutral-200 px-2 py-0.5 rounded-sm border border-neutral-700">
-                {{ project.date }}
+              <span v-if="project.date" class="text-[10px] font-mono bg-neutral-900/80 text-neutral-200 px-2 py-0.5 rounded-sm border border-neutral-700">
+                {{ formatProjectDate(project.date) }}
               </span>
             </div>
           </div>
@@ -267,19 +279,28 @@ useSeoMeta({
             </div>
 
             <div class="pt-3 border-t border-neutral-100 flex items-center justify-between text-xs">
-              <span class="text-neutral-500">
-                Maître d'ouvrage : {{ project.client || 'Privé' }}
-              </span>
               <NuxtLink
-                :to="`/realisations?category=${project.category}`"
-                class="text-neutral-900 font-bold hover:text-black inline-flex items-center gap-1 uppercase tracking-wider text-[11px]"
+                :to="{ path: '/realisations', query: { project: project.id } }"
+                class="ml-auto text-neutral-900 font-bold hover:text-black inline-flex items-center gap-1 uppercase tracking-wider text-[11px]"
               >
-                <span>Détails</span>
+                <span>Voir le projet</span>
                 <UIcon name="i-heroicons-arrow-right" class="w-3 h-3" />
               </NuxtLink>
             </div>
           </div>
         </div>
+      </div>
+
+      <div v-else class="rounded-md border border-neutral-200 bg-neutral-50 px-6 py-12 text-center">
+        <UIcon name="i-heroicons-photo" class="mx-auto mb-3 h-9 w-9 text-neutral-400" />
+        <h3 class="text-base font-bold text-neutral-900">
+          {{ publishedProjects.length === 0 ? 'Aucune réalisation publiée pour le moment' : 'Aucune réalisation dans cette catégorie' }}
+        </h3>
+        <p class="mx-auto mt-2 max-w-lg text-sm text-neutral-500">
+          {{ publishedProjects.length === 0
+            ? 'Les projets validés apparaîtront ici dès leur publication.'
+            : 'Aucun projet publié ne correspond à ce filtre. Choisissez une autre catégorie.' }}
+        </p>
       </div>
 
       <div class="mt-8 text-center">

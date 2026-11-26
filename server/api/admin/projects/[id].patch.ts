@@ -42,7 +42,21 @@ export default defineEventHandler(async (event) => {
       if (typeof value === 'string' && value.length > (field === 'fullDescription' || field === 'description' ? 5000 : 500)) {
         throw createError({ statusCode: 400, statusMessage: `Valeur trop longue pour ${field}` })
       }
-      update[column] = typeof value === 'string' ? value.trim() : null
+      const trimmedValue = typeof value === 'string' ? value.trim() : null
+      if (field === 'description' && !trimmedValue) {
+        throw createError({ statusCode: 400, statusMessage: 'La description est requise' })
+      }
+      if (field === 'date' && trimmedValue) {
+        const date = new Date(`${trimmedValue}T00:00:00.000Z`)
+        if (
+          !/^\d{4}-\d{2}-\d{2}$/.test(trimmedValue) ||
+          !Number.isFinite(date.getTime()) ||
+          date.toISOString().slice(0, 10) !== trimmedValue
+        ) {
+          throw createError({ statusCode: 400, statusMessage: 'Date de réalisation invalide' })
+        }
+      }
+      update[column] = trimmedValue || (['location', 'date', 'client', 'fullDescription'].includes(field) ? null : '')
     } else {
       throw createError({ statusCode: 400, statusMessage: `${field} invalide` })
     }
