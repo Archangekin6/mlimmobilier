@@ -48,7 +48,14 @@ export interface Testimonial {
   published: boolean
   featured: boolean
   display_order: number
+  created_at: string
+  updated_at: string
 }
+
+export type TestimonialInput = Pick<Testimonial, 'client_name' | 'testimonial_text'> &
+  Partial<Pick<Testimonial, 'client_location' | 'service_type' | 'rating' | 'published' | 'featured'>> & {
+    id?: string
+  }
 
 export type ServiceSlug = 'btp' | 'electrification' | 'gestion'
 
@@ -511,16 +518,21 @@ export function useSiteData() {
     await loadAdminData(true)
   }
 
-  const saveTestimonial = async (testimonial: Partial<Testimonial> & Pick<Testimonial, 'client_name' | 'testimonial_text'>) => {
-    const id = testimonial.id
+  const saveTestimonial = async (testimonial: TestimonialInput) => {
+    const { id: testimonialId, ...body } = testimonial
     let result: { cleanupWarning?: string } | undefined
-    if (id) {
-      result = await $fetch<{ cleanupWarning?: string }>(`/api/admin/testimonials/${encodeURIComponent(id)}`, { method: 'PATCH', body: testimonial })
+    if (testimonialId) {
+      result = await $fetch<{ cleanupWarning?: string }>(`/api/admin/testimonials/${encodeURIComponent(testimonialId)}`, { method: 'PATCH', body })
     } else {
-      await $fetch('/api/admin/testimonials', { method: 'POST', body: testimonial })
+      await $fetch('/api/admin/testimonials', { method: 'POST', body })
     }
     await loadAdminData(true)
     return result?.cleanupWarning
+  }
+
+  const updateTestimonialFlags = async (id: string, flags: Partial<Pick<Testimonial, 'published' | 'featured'>>) => {
+    await $fetch(`/api/admin/testimonials/${encodeURIComponent(id)}`, { method: 'PATCH', body: flags })
+    await loadAdminData(true)
   }
 
   const deleteTestimonial = async (id: string) => {
@@ -552,6 +564,7 @@ export function useSiteData() {
     updateQuoteStatus,
     deleteQuote,
     saveTestimonial,
+    updateTestimonialFlags,
     deleteTestimonial
   }
 }

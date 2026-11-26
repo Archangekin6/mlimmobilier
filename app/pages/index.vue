@@ -308,9 +308,11 @@ useSeoMeta({
         <article
           v-for="testimonial in publishedTestimonials"
           :key="testimonial.id"
-          class="bg-white rounded-md p-6 border border-neutral-200 hover:border-neutral-300 transition-all shadow-xs space-y-4 flex flex-col justify-between"
+          class="bg-white rounded-md p-6 border transition-all shadow-xs space-y-4 flex flex-col justify-between"
+          :class="testimonial.featured ? 'border-amber-400 ring-1 ring-amber-200' : 'border-neutral-200 hover:border-neutral-300'"
         >
           <div class="space-y-3">
+            <span v-if="testimonial.featured" class="inline-block text-[10px] font-bold uppercase tracking-wider text-amber-700">Mis en avant</span>
             <div v-if="testimonial.rating" class="flex items-center gap-1 text-amber-500" :aria-label="`Note : ${testimonial.rating} sur 5`">
               <UIcon
                 v-for="star in 5"
@@ -329,8 +331,8 @@ useSeoMeta({
             </div>
             <div>
               <div class="text-xs font-bold text-neutral-950">{{ testimonial.client_name }}</div>
-              <div class="text-[10px] text-neutral-500 uppercase tracking-wider">
-                {{ [testimonial.client_function, testimonial.client_company, testimonial.client_location].filter(Boolean).join(' • ') }}
+              <div v-if="testimonial.client_location" class="text-[10px] text-neutral-500 uppercase tracking-wider">
+                {{ testimonial.client_location }}
               </div>
             </div>
           </div>
