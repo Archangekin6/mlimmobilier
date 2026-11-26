@@ -13,8 +13,7 @@ const currentYear = new Date().getFullYear()
         <div class="space-y-4">
           <div class="flex min-w-0 items-center gap-3">
             <img
-              v-if="settings.logoUrl"
-              :src="settings.logoUrl"
+              src="/uploads/img-1795172952218-4154do.jpg"
               :alt="`Logo ${settings.companyName}`"
               class="max-h-10 w-auto max-w-24 shrink-0 object-contain"
             >

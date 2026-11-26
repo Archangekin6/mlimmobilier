@@ -21,18 +21,11 @@ const navLinks = [
       <div class="flex items-center justify-between h-20">
         <!-- Logo -->
         <NuxtLink to="/" class="flex items-center group">
-          <img 
-            v-if="settings.logoUrl" 
-            :src="settings.logoUrl" 
+          <img
+            src="/uploads/img-1795172952218-4154do.jpg"
             :alt="`Logo ${settings.companyName}`"
             class="h-14 w-auto object-contain transition-all duration-300 group-hover:opacity-90"
           />
-          <div 
-            v-else 
-            class="w-10 h-10 rounded-sm bg-neutral-900 flex items-center justify-center text-white transition-all duration-300 group-hover:bg-black"
-          >
-            <UIcon name="i-heroicons-building-office-2" class="w-5 h-5 text-white" />
-          </div>
         </NuxtLink>
 
         <!-- Desktop Navigation -->

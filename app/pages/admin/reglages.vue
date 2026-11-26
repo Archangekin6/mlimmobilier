@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import ImageUpload from '~/components/common/ImageUpload.vue'
 import { useSiteData } from '~/composables/useSiteData'
 
 definePageMeta({
@@ -12,55 +11,8 @@ const { settings, saveSettings } = useSiteData()
 const form = ref({ ...settings.value })
 const savedSuccess = ref(false)
 const savedError = ref('')
-const isLogoSaving = ref(false)
-const isLogoUploading = ref(false)
-
-const saveLogoReference = async (logoUrl: string) => {
-  await saveSettings({ ...settings.value, logoUrl })
-  form.value.logoUrl = logoUrl
-}
-
-const handleLogoUploaded = async (image: { url: string; storagePath: string }) => {
-  const previousUrl = settings.value.logoUrl
-  isLogoSaving.value = true
-  savedError.value = ''
-  try {
-    await saveLogoReference(image.url)
-    savedSuccess.value = true
-  } catch (error) {
-    console.error('Erreur de remplacement du logo:', error)
-    try {
-      await $fetch('/api/admin/upload', {
-        method: 'DELETE',
-        body: { bucket: 'site-images', storagePath: image.storagePath }
-      })
-    } catch (cleanupError) {
-      console.error('Nettoyage du nouveau logo impossible:', cleanupError)
-    }
-    form.value.logoUrl = previousUrl
-    savedError.value = error instanceof Error ? error.message : 'Impossible de remplacer le logo.'
-  } finally {
-    isLogoSaving.value = false
-  }
-}
-
-const removeLogo = async () => {
-  if (isLogoSaving.value) return
-  isLogoSaving.value = true
-  savedError.value = ''
-  try {
-    await saveLogoReference('')
-    savedSuccess.value = true
-  } catch (error) {
-    console.error('Erreur de suppression du logo:', error)
-    savedError.value = error instanceof Error ? error.message : 'Impossible de supprimer le logo.'
-  } finally {
-    isLogoSaving.value = false
-  }
-}
 
 const handleSave = () => {
-  if (isLogoSaving.value || isLogoUploading.value) return
   savedError.value = ''
   void saveSettings(form.value).then(() => {
     savedSuccess.value = true
@@ -86,14 +38,13 @@ useSeoMeta({
       <div>
         <h2 class="text-xl sm:text-2xl font-black text-black tracking-tight">Coordonnées & Contact</h2>
         <p class="text-xs text-neutral-500 mt-0.5">
-        Identité, coordonnées, logo et réseaux sociaux de l’entreprise.
+        Identité, coordonnées et réseaux sociaux de l’entreprise.
         </p>
       </div>
 
       <button
         type="button"
         @click="handleSave"
-        :disabled="isLogoSaving || isLogoUploading"
         class="inline-flex items-center gap-1.5 bg-black hover:bg-neutral-800 text-white font-bold text-xs uppercase tracking-wider px-5 py-2.5 rounded-xs transition-colors"
       >
         <UIcon name="i-heroicons-check" class="w-4 h-4 text-white" />
@@ -140,20 +91,13 @@ useSeoMeta({
 
         <!-- Logo de l'entreprise -->
         <div class="space-y-3 border-t border-neutral-100 pt-4">
-          <ImageUpload
-            :model-value="form.logoUrl"
-            bucket="site-images"
-            label="Logo de l'entreprise"
-            hint="PNG, JPG, WebP, GIF ou AVIF. Hauteur recommandée : 56 px."
-            preview-size="small"
-            :max-file-size="2"
-            :allow-url="true"
-            :disabled="isLogoSaving || isLogoUploading"
-            @update:model-value="form.logoUrl = $event"
-            @uploaded="handleLogoUploaded"
-            @uploading="isLogoUploading = $event"
-            @delete="removeLogo"
-          />
+          <p class="block text-[11px] font-bold text-black uppercase tracking-wider">Logo officiel de l'entreprise</p>
+          <img
+            src="/uploads/img-1795172952218-4154do.jpg"
+            :alt="`Logo ${settings.companyName}`"
+            class="h-14 w-auto object-contain"
+          >
+          <p class="text-xs text-neutral-500">Le logo officiel est géré par le fichier présent dans le dossier public du site.</p>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">

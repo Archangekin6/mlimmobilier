@@ -21,7 +21,7 @@ useHead({
     { property: "og:locale", content: "fr_FR" },
     { property: "og:type", content: "website" },
   ],
-  link: [{ rel: "icon", type: "image/svg+xml", href: "/favicon.ico" }],
+  link: [{ rel: "icon", type: "image/x-icon", href: "/mlimmobilier.ico" }],
 });
 </script>
 
