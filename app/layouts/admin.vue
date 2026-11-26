@@ -43,8 +43,7 @@ const navItems = [
   { label: 'Réalisations', to: '/admin/realisations', icon: 'i-heroicons-photo' },
   { label: 'Témoignages', to: '/admin/temoignages', icon: 'i-heroicons-chat-bubble-left-right' },
   { label: 'Coordonnées & contact', to: '/admin/reglages', icon: 'i-heroicons-identification' },
-  { label: 'Demandes de devis', to: '/admin/devis', icon: 'i-heroicons-inbox-stack' },
-  { label: 'Bibliothèque d’images', to: '/admin/images', icon: 'i-heroicons-photo-solid' }
+  { label: 'Demandes de devis', to: '/admin/devis', icon: 'i-heroicons-inbox-stack' }
 ]
 </script>
 

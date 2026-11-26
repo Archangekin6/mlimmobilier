@@ -277,7 +277,7 @@ useSeoMeta({
           <div class="space-y-1.5">
             <h4 class="font-bold text-neutral-950 text-xs uppercase tracking-wider">Description de l'ouvrage :</h4>
             <p class="text-neutral-600 text-xs leading-relaxed">
-              {{ activeModalProject.fullDescription || activeModalProject.description }}
+              {{ activeModalProject.description }}
             </p>
           </div>
 

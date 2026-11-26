@@ -19,6 +19,23 @@ export interface Project {
   displayOrder: number
 }
 
+export interface ProjectCreateInput {
+  title: string
+  category: Project['category']
+  location: string
+  description: string
+  imageUrl: string
+  imageStoragePath: string
+  featured: boolean
+}
+
+export type ProjectUpdateInput = Partial<
+  Pick<Project, 'title' | 'category' | 'location' | 'description' | 'published' | 'featured'>
+> & {
+  imageUrl?: string | null
+  imageStoragePath?: string | null
+}
+
 export interface QuoteRequest {
   id: string
   service: 'btp' | 'electrification' | 'gestion' | 'autre'
@@ -343,8 +360,9 @@ interface DatabaseProjectImage {
 function mapProject(row: DatabaseProject, images: DatabaseProjectImage[]): Project {
   const projectImages = images
     .filter(image => image.project_id === row.id)
-    .sort((left, right) => left.display_order - right.display_order)
+    .sort((left, right) => Number(right.is_cover) - Number(left.is_cover) || left.display_order - right.display_order)
   const imageUrl = row.cover_image_url || projectImages.find(image => image.is_cover)?.image_url || projectImages[0]?.image_url || ''
+  const gallery = projectImages.map(image => image.image_url)
   return {
     id: row.id,
     title: row.title,
@@ -355,8 +373,8 @@ function mapProject(row: DatabaseProject, images: DatabaseProjectImage[]): Proje
     fullDescription: row.full_description || row.description || '',
     client: row.client_name || '',
     imageUrl,
-    imageStoragePath: projectImages.find(image => image.is_cover)?.storage_path || projectImages[0]?.storage_path,
-    gallery: projectImages.map(image => image.image_url),
+    imageStoragePath: projectImages.find(image => image.image_url === imageUrl)?.storage_path,
+    gallery: imageUrl ? [imageUrl, ...gallery.filter(url => url !== imageUrl)] : gallery,
     galleryImages: projectImages
       .filter((image): image is DatabaseProjectImage & { storage_path: string } => Boolean(image.storage_path))
       .map(image => ({ imageUrl: image.image_url, storagePath: image.storage_path })),
@@ -484,19 +502,68 @@ export function useSiteData() {
     isPublicDataLoaded.value = false
   }
 
-  const addProject = async (projectData: Omit<Project, 'id'>) => {
-    await $fetch('/api/admin/projects', { method: 'POST', body: projectData })
-    await loadAdminData(true)
+  const addProject = async (projectData: ProjectCreateInput) => {
+    const created = await $fetch<DatabaseProject>('/api/admin/projects', {
+      method: 'POST',
+      body: projectData
+    })
+    const mapped = mapProject(created, [{
+      project_id: created.id,
+      image_url: projectData.imageUrl,
+      storage_path: projectData.imageStoragePath,
+      is_cover: true,
+      display_order: 0
+    }])
+    projects.value = [...projects.value.filter(project => project.id !== mapped.id), mapped]
+      .sort((left, right) => left.displayOrder - right.displayOrder)
+    isAdminDataLoaded.value = true
+    clearNuxtData('site-public-data')
+    isPublicDataLoaded.value = false
+    return mapped
   }
 
-  const updateProject = async (id: string, projectData: Partial<Project>) => {
-    await $fetch(`/api/admin/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body: projectData })
-    await loadAdminData(true)
+  const updateProject = async (id: string, projectData: ProjectUpdateInput) => {
+    const updated = await $fetch<DatabaseProject>(`/api/admin/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: projectData
+    })
+    const current = projects.value.find(project => project.id === id)
+    const imageChanged = Object.prototype.hasOwnProperty.call(projectData, 'imageStoragePath')
+    const currentImages = current?.galleryImages || []
+    const keptImages = imageChanged && current?.imageStoragePath
+      ? currentImages.filter(image => image.storagePath !== current.imageStoragePath)
+      : currentImages
+    const nextImages: DatabaseProjectImage[] = keptImages.map((image, index) => ({
+      project_id: id,
+      image_url: image.imageUrl,
+      storage_path: image.storagePath,
+      is_cover: !imageChanged && image.storagePath === current?.imageStoragePath,
+      display_order: index
+    }))
+
+    if (imageChanged && typeof projectData.imageUrl === 'string' && typeof projectData.imageStoragePath === 'string') {
+      nextImages.unshift({
+        project_id: id,
+        image_url: projectData.imageUrl,
+        storage_path: projectData.imageStoragePath,
+        is_cover: true,
+        display_order: 0
+      })
+    }
+
+    const mapped = mapProject(updated, nextImages)
+    projects.value = [...projects.value.filter(project => project.id !== id), mapped]
+      .sort((left, right) => left.displayOrder - right.displayOrder)
+    isAdminDataLoaded.value = true
+    clearNuxtData('site-public-data')
+    isPublicDataLoaded.value = false
   }
 
   const deleteProject = async (id: string) => {
     await $fetch(`/api/admin/projects/${encodeURIComponent(id)}`, { method: 'DELETE' })
-    await loadAdminData(true)
+    projects.value = projects.value.filter(project => project.id !== id)
+    clearNuxtData('site-public-data')
+    isPublicDataLoaded.value = false
   }
 
   const toggleProjectPublish = async (id: string) => {

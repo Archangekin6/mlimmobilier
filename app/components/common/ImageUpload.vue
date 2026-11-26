@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 
 interface Props {
   modelValue: string
@@ -11,7 +11,8 @@ interface Props {
   bucket?: 'site-images' | 'project-images'
   compact?: boolean
   disabled?: boolean
-  allowUrl?: boolean
+  onUploadComplete?: (value: { url: string; storagePath: string }) => void | Promise<void>
+  onDeleteComplete?: (value: { url: string }) => void | Promise<void>
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -22,8 +23,7 @@ const props = withDefaults(defineProps<Props>(), {
   maxFileSize: 5,
   bucket: 'project-images',
   compact: false,
-  disabled: false,
-  allowUrl: false
+  disabled: false
 })
 
 const emit = defineEmits<{
@@ -38,13 +38,6 @@ const selectedFile = ref<File | null>(null)
 const selectedPreviewUrl = ref('')
 const isUploading = ref(false)
 const uploadError = ref('')
-const uploadSuccess = ref(false)
-const urlInput = ref(props.modelValue)
-const showUrlInput = ref(false)
-
-watch(() => props.modelValue, (value) => {
-  urlInput.value = value
-})
 
 const clearSelectedPreview = () => {
   if (selectedPreviewUrl.value.startsWith('blob:')) URL.revokeObjectURL(selectedPreviewUrl.value)
@@ -75,9 +68,15 @@ const handleFileSelect = (event: Event) => {
   if (!file) return
 
   uploadError.value = ''
-  uploadSuccess.value = false
-  if (!file.type.startsWith('image/')) {
-    uploadError.value = 'Veuillez sélectionner une image valide.'
+  const allowedTypes = new Set([
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+    'image/avif'
+  ])
+  if (!allowedTypes.has(file.type)) {
+    uploadError.value = 'Format refusé. Utilisez un fichier JPG, PNG, WebP, GIF ou AVIF.'
     return
   }
   if (file.size > props.maxFileSize * 1024 * 1024) {
@@ -94,7 +93,6 @@ const cancelSelection = () => {
   selectedFile.value = null
   clearSelectedPreview()
   uploadError.value = ''
-  uploadSuccess.value = false
 }
 
 const uploadFile = async () => {
@@ -102,7 +100,6 @@ const uploadFile = async () => {
 
   isUploading.value = true
   uploadError.value = ''
-  uploadSuccess.value = false
   emit('uploading', true)
 
   try {
@@ -113,11 +110,15 @@ const uploadFile = async () => {
       method: 'POST',
       body: formData
     })
-    emit('uploaded', { url: response.url, storagePath: response.storagePath })
+    if (!response.url || !response.storagePath) {
+      throw new Error('Le serveur n’a pas confirmé le chemin de l’image téléversée.')
+    }
+    const uploaded = { url: response.url, storagePath: response.storagePath }
+    await props.onUploadComplete?.(uploaded)
+    emit('uploaded', uploaded)
     emit('update:modelValue', response.url)
     selectedFile.value = null
     clearSelectedPreview()
-    uploadSuccess.value = true
   } catch (error: unknown) {
     if (typeof error === 'object' && error !== null && 'data' in error) {
       const data = error.data
@@ -138,17 +139,26 @@ const uploadFile = async () => {
   }
 }
 
-const deleteImage = () => {
+const deleteImage = async () => {
   if (!props.modelValue || props.disabled || isUploading.value) return
   if (!window.confirm(`Supprimer l’image « ${props.label} » ?`)) return
   uploadError.value = ''
-  uploadSuccess.value = false
-  emit('delete', { url: props.modelValue })
-}
-
-const updateUrl = () => {
-  uploadError.value = ''
-  emit('update:modelValue', urlInput.value.trim())
+  isUploading.value = true
+  emit('uploading', true)
+  try {
+    const deleted = { url: props.modelValue }
+    await props.onDeleteComplete?.(deleted)
+    emit('delete', deleted)
+    emit('update:modelValue', '')
+  } catch (error: unknown) {
+    uploadError.value = error instanceof Error && error.message
+      ? error.message
+      : 'Impossible de supprimer cette image.'
+    console.error(error)
+  } finally {
+    isUploading.value = false
+    emit('uploading', false)
+  }
 }
 </script>
 
@@ -226,28 +236,9 @@ const updateUrl = () => {
       >
         Supprimer l’image
       </button>
-      <button
-        v-if="allowUrl && !compact"
-        type="button"
-        class="rounded-xs border border-neutral-300 px-3 py-2 text-xs font-semibold text-neutral-800"
-        @click="showUrlInput = !showUrlInput"
-      >
-        {{ showUrlInput ? 'Masquer le lien URL' : 'Utiliser une URL' }}
-      </button>
-    </div>
-
-    <div v-if="allowUrl && showUrlInput" class="flex gap-2">
-      <input
-        v-model="urlInput"
-        type="url"
-        class="min-w-0 flex-1 rounded-xs border border-neutral-300 px-3 py-2 text-xs"
-        placeholder="https://exemple.com/image.png"
-      >
-      <button type="button" class="rounded-xs border px-3 py-2 text-xs font-semibold" @click="updateUrl">Appliquer</button>
     </div>
 
     <p v-if="uploadError" role="alert" class="text-xs text-red-700">{{ uploadError }}</p>
-    <p v-if="uploadSuccess" role="status" class="text-xs text-emerald-700">Image téléversée avec succès.</p>
     <p class="text-[10px] text-neutral-500">JPG, PNG, WebP, GIF ou AVIF — {{ maxFileSize }} Mo maximum.</p>
   </div>
 </template>

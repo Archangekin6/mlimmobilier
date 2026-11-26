@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import ImageUpload from '~/components/common/ImageUpload.vue'
-import { useSiteData, type Project } from '~/composables/useSiteData'
+import {
+  useSiteData,
+  type Project,
+  type ProjectCreateInput,
+  type ProjectUpdateInput
+} from '~/composables/useSiteData'
 
 definePageMeta({
   layout: 'admin'
@@ -11,9 +16,29 @@ const { projects, addProject, updateProject, deleteProject, toggleProjectPublish
 
 const isModalOpen = ref(false)
 const isEditing = ref(false)
+const isSaving = ref(false)
 const currentEditId = ref('')
 const saveError = ref('')
+const saveSuccess = ref('')
 const imageUploadsInProgress = ref(0)
+const pendingUploadPaths = ref(new Set<string>())
+const coverImageChanged = ref(false)
+
+const projectForm = ref({
+  title: '',
+  category: 'btp' as Project['category'],
+  location: '',
+  description: '',
+  imageUrl: '',
+  imageStoragePath: '',
+  featured: false
+})
+
+const categoryLabels: Record<Project['category'], string> = {
+  btp: 'BTP – Bâtiment et travaux publics',
+  electrification: 'Électrification et distribution électrique',
+  gestion: 'Gestion immobilière'
+}
 
 const getApiErrorMessage = (error: unknown, fallback: string) => {
   if (typeof error === 'object' && error !== null && 'data' in error) {
@@ -25,20 +50,10 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
-const projectForm = ref({
-  title: '',
-  category: 'btp' as Project['category'],
-  location: '',
-  date: '',
-  description: '',
-  fullDescription: '',
-  imageUrl: '',
-  imageStoragePath: '',
-  galleryImages: [] as Array<{ imageUrl: string; storagePath: string }>,
-  published: false,
-  featured: false,
-  displayOrder: 0
-})
+const resetMessages = () => {
+  saveError.value = ''
+  saveSuccess.value = ''
+}
 
 const openAddModal = () => {
   isEditing.value = false
@@ -47,16 +62,14 @@ const openAddModal = () => {
     title: '',
     category: 'btp',
     location: '',
-    date: '',
     description: '',
-    fullDescription: '',
     imageUrl: '',
     imageStoragePath: '',
-    galleryImages: [],
-    published: false,
-    featured: false,
-    displayOrder: projects.value.length
+    featured: false
   }
+  pendingUploadPaths.value = new Set()
+  coverImageChanged.value = false
+  resetMessages()
   isModalOpen.value = true
 }
 
@@ -67,253 +80,159 @@ const openEditModal = (project: Project) => {
     title: project.title,
     category: project.category,
     location: project.location,
-    date: project.date,
     description: project.description,
-    fullDescription: project.fullDescription || '',
     imageUrl: project.imageUrl,
     imageStoragePath: project.imageStoragePath || '',
-    galleryImages: project.galleryImages || [],
-    published: project.published,
-    featured: project.featured,
-    displayOrder: project.displayOrder
+    featured: project.featured
   }
+  pendingUploadPaths.value = new Set()
+  coverImageChanged.value = false
+  resetMessages()
   isModalOpen.value = true
 }
 
 const removeUnusedUpload = async (storagePath: string) => {
   if (!storagePath) return
-  await $fetch('/api/admin/upload', {
+  const result = await $fetch<{ removed: boolean; referenced: boolean; message: string }>('/api/admin/upload', {
     method: 'DELETE',
     body: { bucket: 'project-images', storagePath }
   })
-}
-
-const persistProjectImages = async (changes: Partial<Project>) => {
-  if (!isEditing.value || !currentEditId.value) return
-  imageUploadsInProgress.value++
-  try {
-    await updateProject(currentEditId.value, changes)
-  } finally {
-    imageUploadsInProgress.value = Math.max(0, imageUploadsInProgress.value - 1)
+  if (!result.removed && !result.referenced && result.message !== 'Aucune suppression nécessaire.') {
+    throw new Error(result.message || 'Impossible de supprimer le fichier temporaire.')
   }
 }
 
-const handleCoverUploaded = async (replacement: { url: string; storagePath: string }) => {
+const handleCoverUploaded = async (uploaded: { url: string; storagePath: string }) => {
+  if (!uploaded.url || !uploaded.storagePath) {
+    throw new Error('Le téléversement ne contient pas de référence exploitable.')
+  }
+
   const previousPath = projectForm.value.imageStoragePath
-  const coverIndex = projectForm.value.galleryImages.findIndex(image => image.storagePath === previousPath)
-  const nextGallery = [...projectForm.value.galleryImages]
-  if (coverIndex >= 0) {
-    nextGallery[coverIndex] = { imageUrl: replacement.url, storagePath: replacement.storagePath }
-  } else {
-    nextGallery.unshift({ imageUrl: replacement.url, storagePath: replacement.storagePath })
-  }
+  pendingUploadPaths.value.add(uploaded.storagePath)
+  projectForm.value.imageUrl = uploaded.url
+  projectForm.value.imageStoragePath = uploaded.storagePath
+  coverImageChanged.value = true
+  saveError.value = ''
 
-  let cleanupWarning = ''
-  try {
-    await persistProjectImages({
-      imageUrl: replacement.url,
-      imageStoragePath: replacement.storagePath,
-      galleryImages: nextGallery
-    })
-    projectForm.value.imageUrl = replacement.url
-    projectForm.value.imageStoragePath = replacement.storagePath
-    projectForm.value.galleryImages = nextGallery
-    if (!isEditing.value && previousPath && previousPath !== replacement.storagePath) {
-      try {
-        await removeUnusedUpload(previousPath)
-      } catch (cleanupError) {
-        console.error('Nettoyage de l’ancienne image temporaire impossible:', cleanupError)
-        cleanupWarning = 'La nouvelle image est enregistrée, mais l’ancienne image temporaire n’a pas pu être supprimée.'
-      }
-    }
-    saveError.value = cleanupWarning
-  } catch (error) {
-    console.error('Erreur de remplacement de l’image principale:', error)
+  if (previousPath && previousPath !== uploaded.storagePath && pendingUploadPaths.value.has(previousPath)) {
     try {
-      await removeUnusedUpload(replacement.storagePath)
-    } catch (cleanupError) {
-      console.error('Nettoyage de la nouvelle image impossible:', cleanupError)
+      await removeUnusedUpload(previousPath)
+      pendingUploadPaths.value.delete(previousPath)
+    } catch (error) {
+      console.error('Nettoyage de l’ancienne image temporaire impossible:', error)
+      saveError.value = getApiErrorMessage(error, 'La nouvelle photo est prête, mais une ancienne image temporaire n’a pas pu être supprimée.')
     }
-    saveError.value = getApiErrorMessage(error, 'Impossible de remplacer l’image du projet.')
   }
 }
 
-const addGalleryImage = async (image: { url: string; storagePath: string }) => {
-  const nextGallery = [...projectForm.value.galleryImages, { imageUrl: image.url, storagePath: image.storagePath }]
-  try {
-    await persistProjectImages({ galleryImages: nextGallery })
-    projectForm.value.galleryImages = nextGallery
-    saveError.value = ''
-  } catch (error) {
-    console.error('Erreur d’ajout à la galerie:', error)
-    try {
-      await removeUnusedUpload(image.storagePath)
-    } catch (cleanupError) {
-      console.error('Nettoyage de la nouvelle image impossible:', cleanupError)
-    }
-    saveError.value = getApiErrorMessage(error, 'Impossible d’ajouter cette image à la galerie.')
+const handleCoverDeleted = async () => {
+  const storagePath = projectForm.value.imageStoragePath
+  if (storagePath && pendingUploadPaths.value.has(storagePath)) {
+    await removeUnusedUpload(storagePath)
+    pendingUploadPaths.value.delete(storagePath)
   }
-}
-
-const replaceGalleryImage = async (
-  storagePath: string,
-  replacement: { url: string; storagePath: string }
-) => {
-  const isCover = projectForm.value.imageStoragePath === storagePath
-  const nextGallery = projectForm.value.galleryImages.map(image =>
-    image.storagePath === storagePath
-      ? { imageUrl: replacement.url, storagePath: replacement.storagePath }
-      : image
-  )
-
-  try {
-    await persistProjectImages({
-      galleryImages: nextGallery,
-      ...(isCover ? { imageUrl: replacement.url, imageStoragePath: replacement.storagePath } : {})
-    })
-    projectForm.value.galleryImages = nextGallery
-    if (isCover) {
-      projectForm.value.imageUrl = replacement.url
-      projectForm.value.imageStoragePath = replacement.storagePath
-    }
-    if (!isEditing.value) {
-      try {
-        await removeUnusedUpload(storagePath)
-      } catch (cleanupError) {
-        console.error('Nettoyage de l’ancienne image temporaire impossible:', cleanupError)
-        saveError.value = 'L’image a été remplacée, mais l’ancienne image temporaire n’a pas pu être supprimée.'
-        return
-      }
-    }
-    saveError.value = ''
-  } catch (error) {
-    console.error('Erreur de remplacement d’une image de galerie:', error)
-    try {
-      await removeUnusedUpload(replacement.storagePath)
-    } catch (cleanupError) {
-      console.error('Nettoyage de la nouvelle image impossible:', cleanupError)
-    }
-    saveError.value = getApiErrorMessage(error, 'Impossible de remplacer cette image.')
-  }
-}
-
-const removeGalleryImage = async (storagePath: string) => {
-  const nextGallery = projectForm.value.galleryImages.filter(image => image.storagePath !== storagePath)
-  const isCover = projectForm.value.imageStoragePath === storagePath
-
-  try {
-    if (isCover) {
-      await persistProjectImages({
-        imageUrl: '',
-        imageStoragePath: '',
-        galleryImages: nextGallery
-      })
-      projectForm.value.imageUrl = ''
-      projectForm.value.imageStoragePath = ''
-    } else {
-      await persistProjectImages({ galleryImages: nextGallery })
-    }
-    if (!isEditing.value) await removeUnusedUpload(storagePath)
-    projectForm.value.galleryImages = nextGallery
-    saveError.value = ''
-  } catch (error) {
-    console.error('Erreur de suppression d’une image de galerie:', error)
-    saveError.value = getApiErrorMessage(error, 'Impossible de supprimer cette image.')
-  }
-}
-
-const moveGalleryImage = (index: number, direction: -1 | 1) => {
-  const nextIndex = index + direction
-  if (nextIndex < 0 || nextIndex >= projectForm.value.galleryImages.length) return
-  const images = [...projectForm.value.galleryImages]
-  ;[images[index], images[nextIndex]] = [images[nextIndex]!, images[index]!]
-  projectForm.value.galleryImages = images
+  projectForm.value.imageUrl = ''
+  projectForm.value.imageStoragePath = ''
+  coverImageChanged.value = true
+  saveError.value = ''
 }
 
 const trackImageUpload = (uploading: boolean) => {
   imageUploadsInProgress.value = Math.max(0, imageUploadsInProgress.value + (uploading ? 1 : -1))
 }
 
-const removeProjectCover = async () => {
-  if (!projectForm.value.imageUrl) return
-  const storagePath = projectForm.value.imageStoragePath
-  if (storagePath && projectForm.value.galleryImages.some(image => image.storagePath === storagePath)) {
-    await removeGalleryImage(storagePath)
-    return
-  }
-  try {
-    await persistProjectImages({ imageUrl: '', imageStoragePath: '', galleryImages: projectForm.value.galleryImages })
-    projectForm.value.imageUrl = ''
-    projectForm.value.imageStoragePath = ''
-    if (storagePath && !isEditing.value) await removeUnusedUpload(storagePath)
-    saveError.value = ''
-  } catch (error) {
-    console.error('Erreur de suppression de l’image principale:', error)
-    saveError.value = getApiErrorMessage(error, 'Impossible de supprimer l’image principale.')
-  }
-}
-
 const closeProjectModal = async () => {
-  if (!isEditing.value) {
-    const storagePaths = new Set([
-      projectForm.value.imageStoragePath,
-      ...projectForm.value.galleryImages.map(image => image.storagePath)
-    ].filter(Boolean))
-    try {
-      await Promise.all([...storagePaths].map(removeUnusedUpload))
-    } catch (error) {
-      console.error('Nettoyage des images du projet annulé impossible:', error)
-      saveError.value = getApiErrorMessage(error, 'Certaines images temporaires n’ont pas pu être supprimées.')
-      return
-    }
+  if (isSaving.value || imageUploadsInProgress.value > 0) return
+
+  try {
+    await Promise.all([...pendingUploadPaths.value].map(removeUnusedUpload))
+    pendingUploadPaths.value.clear()
+    isModalOpen.value = false
+  } catch (error) {
+    console.error('Nettoyage des images temporaires impossible:', error)
+    saveError.value = getApiErrorMessage(error, 'Certaines images temporaires n’ont pas pu être supprimées.')
   }
-  isModalOpen.value = false
 }
 
 const saveProject = async () => {
-  if (!projectForm.value.title.trim() || !projectForm.value.description.trim()) {
-    alert('Veuillez renseigner le titre et la description de la réalisation.')
+  if (isSaving.value || imageUploadsInProgress.value > 0) return
+  resetMessages()
+
+  const form = projectForm.value
+  if (!form.title.trim() || !form.description.trim()) {
+    saveError.value = 'Renseignez le titre et la courte description de la réalisation.'
     return
   }
-  if (!isEditing.value && (!projectForm.value.imageUrl || !projectForm.value.imageStoragePath)) {
-    alert('Ajoutez une image principale depuis le bucket des réalisations avant de créer la fiche.')
+  if (!isEditing.value && (!form.imageUrl || !form.imageStoragePath)) {
+    saveError.value = 'Téléversez la photo principale et attendez la fin du téléversement avant l’enregistrement.'
+    return
+  }
+  if (form.imageUrl && coverImageChanged.value && !form.imageStoragePath) {
+    saveError.value = 'La photo sélectionnée ne possède pas de référence Storage valide.'
     return
   }
 
-  saveError.value = ''
+  isSaving.value = true
   try {
     if (isEditing.value && currentEditId.value) {
-      await updateProject(currentEditId.value, { ...projectForm.value })
+      const update: ProjectUpdateInput = {
+        title: form.title.trim(),
+        category: form.category,
+        location: form.location.trim(),
+        description: form.description.trim(),
+        featured: form.featured
+      }
+      if (coverImageChanged.value) {
+        update.imageUrl = form.imageUrl || null
+        update.imageStoragePath = form.imageStoragePath || null
+      }
+      await updateProject(currentEditId.value, update)
+      saveSuccess.value = 'La réalisation a été modifiée.'
     } else {
-      await addProject({
-        ...projectForm.value,
-        galleryImages: projectForm.value.galleryImages
-      })
+      const input: ProjectCreateInput = {
+        title: form.title.trim(),
+        category: form.category,
+        location: form.location.trim(),
+        description: form.description.trim(),
+        imageUrl: form.imageUrl,
+        imageStoragePath: form.imageStoragePath,
+        featured: form.featured
+      }
+      await addProject(input)
+      saveSuccess.value = 'La réalisation a été enregistrée et publiée.'
     }
+    pendingUploadPaths.value.clear()
     isModalOpen.value = false
   } catch (error) {
-    console.error('Erreur d’enregistrement du projet:', error)
-    saveError.value = getApiErrorMessage(error, 'Impossible d’enregistrer le projet. Vérifiez la connexion puis réessayez.')
+    console.error('Erreur d’enregistrement de la réalisation:', error)
+    saveError.value = getApiErrorMessage(error, 'Impossible d’enregistrer la réalisation. Vérifiez la connexion puis réessayez.')
+  } finally {
+    isSaving.value = false
   }
 }
 
 const handleDelete = async (id: string) => {
-  if (confirm('Voulez-vous vraiment supprimer cette réalisation ?')) {
-    try {
-      await deleteProject(id)
-    } catch (error) {
-      console.error('Erreur de suppression du projet:', error)
-      saveError.value = 'Impossible de supprimer le projet.'
-    }
+  if (!window.confirm('Voulez-vous vraiment supprimer cette réalisation ?')) return
+  resetMessages()
+  try {
+    await deleteProject(id)
+    saveSuccess.value = 'La réalisation a été supprimée.'
+  } catch (error) {
+    console.error('Erreur de suppression du projet:', error)
+    saveError.value = getApiErrorMessage(error, 'Impossible de supprimer cette réalisation.')
   }
 }
 
 const handlePublishToggle = async (project: Project) => {
+  resetMessages()
   try {
     await toggleProjectPublish(project.id)
+    saveSuccess.value = project.published
+      ? 'La réalisation a été dépubliée.'
+      : 'La réalisation a été publiée.'
   } catch (error) {
     console.error('Erreur de publication du projet:', error)
-    saveError.value = 'Impossible de modifier la publication du projet.'
+    saveError.value = getApiErrorMessage(error, 'Impossible de modifier la publication du projet.')
   }
 }
 
@@ -325,40 +244,43 @@ useSeoMeta({
 
 <template>
   <div class="space-y-6">
-    <p v-if="saveError" class="border border-red-200 bg-red-50 p-3 text-xs text-red-800">{{ saveError }}</p>
-    <!-- Header -->
-    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-      <div>
-        <h2 class="text-xl sm:text-2xl font-black text-black tracking-tight">Réalisations & Chantiers</h2>
-        <p class="text-xs text-neutral-500 mt-0.5">Créez, publiez, modifiez ou masquez vos chantiers.</p>
-      </div>
+    <p v-if="saveSuccess" role="status" class="border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+      {{ saveSuccess }}
+    </p>
+    <p v-if="saveError" role="alert" class="border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+      {{ saveError }}
+    </p>
 
+    <div class="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+      <div>
+        <h2 class="text-xl font-black tracking-tight text-black sm:text-2xl">Réalisations & Chantiers</h2>
+        <p class="mt-0.5 text-xs text-neutral-500">Gérez les projets présentés sur le site.</p>
+      </div>
       <button
         type="button"
+        class="inline-flex items-center gap-1.5 rounded-xs bg-black px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-neutral-800"
         @click="openAddModal"
-        class="inline-flex items-center gap-1.5 bg-black hover:bg-neutral-800 text-white font-bold text-xs uppercase tracking-wider px-4 py-2.5 rounded-xs transition-colors"
       >
-        <UIcon name="i-heroicons-plus" class="w-4 h-4 text-white" />
-        <span>Nouveau Projet</span>
+        <UIcon name="i-heroicons-plus" class="h-4 w-4 text-white" />
+        <span>Nouvelle réalisation</span>
       </button>
     </div>
 
-    <!-- Projects Table / Grid -->
-    <div class="bg-white border border-neutral-200 rounded-xs overflow-hidden">
-      <div class="p-3.5 border-b border-neutral-200 flex justify-between items-center text-xs text-neutral-500 uppercase tracking-wider font-semibold">
-        <span>{{ projects.length }} projet(s) enregistré(s)</span>
+    <div class="overflow-hidden rounded-xs border border-neutral-200 bg-white">
+      <div class="flex items-center justify-between border-b border-neutral-200 p-3.5 text-xs font-semibold uppercase tracking-wider text-neutral-500">
+        <span>{{ projects.length }} réalisation(s) enregistrée(s)</span>
       </div>
 
       <div v-if="projects.length === 0" class="px-6 py-12 text-center">
         <UIcon name="i-heroicons-photo" class="mx-auto mb-3 h-9 w-9 text-neutral-400" />
         <h3 class="text-sm font-bold text-neutral-900">Aucune réalisation enregistrée</h3>
         <p class="mx-auto mt-2 max-w-md text-xs text-neutral-500">
-          Ajoutez vos projets ici. Ils resteront en brouillon jusqu’à leur publication.
+          Ajoutez une réalisation. Elle sera publiée automatiquement après son enregistrement.
         </p>
         <button
           type="button"
-          @click="openAddModal"
           class="mt-4 inline-flex items-center gap-1.5 bg-black px-4 py-2 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-neutral-800"
+          @click="openAddModal"
         >
           <UIcon name="i-heroicons-plus" class="h-4 w-4 text-white" />
           Ajouter une réalisation
@@ -369,275 +291,199 @@ useSeoMeta({
         <div
           v-for="project in projects"
           :key="project.id"
-          class="p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 hover:bg-neutral-50 transition-colors"
+          class="flex flex-col items-start justify-between gap-4 p-4 transition-colors hover:bg-neutral-50 sm:p-5 md:flex-row md:items-center"
         >
-          <!-- Left: Thumbnail & Info -->
-          <div class="flex items-start gap-4">
-            <div class="flex h-16 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xs border border-neutral-200 bg-neutral-900">
-              <img v-if="project.imageUrl" :src="project.imageUrl" :alt="project.title" class="w-full h-full object-cover" />
+          <div class="flex min-w-0 items-start gap-4">
+            <div class="flex h-16 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xs border border-neutral-200 bg-neutral-100">
+              <img v-if="project.imageUrl" :src="project.imageUrl" :alt="project.title" class="h-full w-full object-cover">
               <UIcon v-else name="i-heroicons-photo" class="m-auto h-6 w-6 text-neutral-500" />
             </div>
-
-            <div class="space-y-1">
-              <div class="flex items-center gap-2">
-                <span class="font-bold text-black text-sm">{{ project.title }}</span>
-                <span class="text-[9px] uppercase font-bold text-black bg-neutral-100 px-1.5 py-0.5 rounded-xs border border-neutral-300">
-                  {{ project.category }}
+            <div class="min-w-0 space-y-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-sm font-bold text-black">{{ project.title }}</span>
+                <span class="rounded-xs border border-neutral-300 bg-neutral-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-black">
+                  {{ categoryLabels[project.category] }}
                 </span>
                 <span
-                  :class="project.published ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-500 border border-neutral-200'"
-                  class="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-xs"
+                  :class="project.published ? 'bg-black text-white' : 'border border-neutral-200 bg-neutral-100 text-neutral-500'"
+                  class="rounded-xs px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
                 >
-                  {{ project.published ? 'Publié' : 'Brouillon' }}
+                  {{ project.published ? 'Publié' : 'Dépublié' }}
                 </span>
-                <span v-if="project.featured" class="border border-black text-black text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-xs">
-                  En vedette
-                </span>
-              </div>
-
-              <p class="text-xs text-neutral-600 line-clamp-1 max-w-xl">{{ project.description }}</p>
-
-              <div v-if="project.location || project.date" class="text-[11px] text-neutral-500 flex items-center gap-4">
-                <span v-if="project.location" class="flex items-center gap-1">
-                  <UIcon name="i-heroicons-map-pin" class="w-3.5 h-3.5 text-neutral-400" />
-                  {{ project.location }}
-                </span>
-                <span v-if="project.date" class="flex items-center gap-1 font-mono">
-                  <UIcon name="i-heroicons-calendar" class="w-3.5 h-3.5 text-neutral-400" />
-                  {{ project.date }}
-                </span>
-                <span v-if="project.client" class="flex items-center gap-1">
-                  <UIcon name="i-heroicons-user" class="w-3.5 h-3.5 text-neutral-400" />
-                  {{ project.client }}
+                <span
+                  :class="project.featured ? 'border-black text-black' : 'border-neutral-200 text-neutral-500'"
+                  class="rounded-xs border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+                >
+                  {{ project.featured ? 'En vedette' : 'Pas en vedette' }}
                 </span>
               </div>
+              <p class="line-clamp-1 max-w-xl text-xs text-neutral-600">{{ project.description }}</p>
+              <p v-if="project.location" class="flex items-center gap-1 text-[11px] text-neutral-500">
+                <UIcon name="i-heroicons-map-pin" class="h-3.5 w-3.5 text-neutral-400" />
+                {{ project.location }}
+              </p>
             </div>
           </div>
 
-          <!-- Right: Actions -->
-          <div class="flex items-center gap-2 self-end md:self-center shrink-0">
+          <div class="flex shrink-0 items-center gap-2 self-end md:self-center">
             <button
               type="button"
+              class="rounded-xs border border-neutral-300 bg-neutral-100 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-black transition-colors hover:bg-neutral-200"
               @click="handlePublishToggle(project)"
-              class="px-3 py-1.5 rounded-xs bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 text-black text-xs font-semibold uppercase tracking-wider transition-colors"
             >
-              {{ project.published ? 'Masquer' : 'Publier' }}
+              {{ project.published ? 'Dépublier' : 'Publier' }}
             </button>
-
             <button
               type="button"
+              class="rounded-xs bg-black px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-white transition-colors hover:bg-neutral-800"
               @click="openEditModal(project)"
-              class="px-3 py-1.5 rounded-xs bg-black hover:bg-neutral-800 text-white text-xs font-semibold uppercase tracking-wider transition-colors"
             >
               Modifier
             </button>
-
             <button
               type="button"
-              @click="handleDelete(project.id)"
-              class="p-1.5 text-neutral-400 hover:text-black rounded-xs transition-colors"
+              class="rounded-xs p-1.5 text-neutral-400 transition-colors hover:text-black"
               title="Supprimer"
+              aria-label="Supprimer la réalisation"
+              @click="handleDelete(project.id)"
             >
-              <UIcon name="i-heroicons-trash" class="w-4 h-4" />
+              <UIcon name="i-heroicons-trash" class="h-4 w-4" />
             </button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- ADD / EDIT MODAL -->
     <div
       v-if="isModalOpen"
-      class="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
+      class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 p-4 backdrop-blur-xs sm:p-6"
       @click.self="closeProjectModal"
     >
-      <div class="bg-white border border-neutral-300 rounded-xs max-w-xl w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+      <div class="max-h-[90vh] w-full max-w-xl space-y-5 overflow-y-auto rounded-xs border border-neutral-300 bg-white p-5 sm:p-6">
         <div class="flex items-center justify-between border-b border-neutral-200 pb-3">
-          <h3 class="text-base font-black text-black uppercase tracking-wider">
-            {{ isEditing ? 'Modifier la Réalisation' : 'Nouveau Projet' }}
-          </h3>
+          <div>
+            <h3 class="text-base font-black uppercase tracking-wider text-black">
+              {{ isEditing ? 'Modifier la réalisation' : 'Nouvelle réalisation' }}
+            </h3>
+            <p class="mt-1 text-[11px] text-neutral-500">
+              Toute nouvelle réalisation est publiée après son enregistrement.
+            </p>
+          </div>
           <button
             type="button"
+            :disabled="isSaving || imageUploadsInProgress > 0"
+            class="text-neutral-400 hover:text-black disabled:opacity-40"
+            aria-label="Fermer"
             @click="closeProjectModal"
-            class="text-neutral-400 hover:text-black"
           >
-            <UIcon name="i-heroicons-x-mark" class="w-5 h-5" />
+            <UIcon name="i-heroicons-x-mark" class="h-5 w-5" />
           </button>
         </div>
 
-        <form @submit.prevent="saveProject" class="space-y-4">
+        <form class="space-y-4" @submit.prevent="saveProject">
           <div>
-            <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Titre de l'ouvrage *</label>
+            <label for="project-title" class="mb-1 block text-[11px] font-bold uppercase tracking-wider text-black">
+              Titre de l’ouvrage *
+            </label>
             <input
+              id="project-title"
               v-model="projectForm.title"
               type="text"
+              maxlength="200"
               required
-              class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
-              placeholder="Construction Immeuble R+4"
-            />
+              class="w-full rounded-xs border border-neutral-300 bg-white px-3 py-2 text-xs text-black focus:border-black focus:outline-none"
+              placeholder="Titre de la réalisation"
+            >
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Catégorie *</label>
+              <label for="project-category" class="mb-1 block text-[11px] font-bold uppercase tracking-wider text-black">
+                Catégorie *
+              </label>
               <select
+                id="project-category"
                 v-model="projectForm.category"
-                class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
+                required
+                class="w-full rounded-xs border border-neutral-300 bg-white px-3 py-2 text-xs text-black focus:border-black focus:outline-none"
               >
                 <option value="btp">BTP – Bâtiment et travaux publics</option>
                 <option value="electrification">Électrification et distribution électrique</option>
                 <option value="gestion">Gestion immobilière</option>
               </select>
             </div>
-
             <div>
-              <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Localisation</label>
+              <label for="project-location" class="mb-1 block text-[11px] font-bold uppercase tracking-wider text-black">
+                Localisation
+              </label>
               <input
+                id="project-location"
                 v-model="projectForm.location"
                 type="text"
-                class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
+                maxlength="200"
+                class="w-full rounded-xs border border-neutral-300 bg-white px-3 py-2 text-xs text-black focus:border-black focus:outline-none"
                 placeholder="Facultatif"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Date de réalisation</label>
-            <input
-              v-model="projectForm.date"
-              type="date"
-              class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none font-mono"
-            />
-            <p class="mt-1 text-[10px] text-neutral-500">Laissez vide si la date n’est pas connue.</p>
-          </div>
-
-          <div>
-            <ImageUpload
-              :model-value="projectForm.imageUrl"
-              @uploaded="handleCoverUploaded"
-              @delete="removeProjectCover"
-              @uploading="trackImageUpload"
-              label="Photo principale du projet"
-              hint="Ajoutez une image, remplacez-la ou supprimez-la."
-              preview-size="medium"
-              :max-file-size="5"
-              :disabled="imageUploadsInProgress > 0"
-              bucket="project-images"
-            />
-          </div>
-          <div class="space-y-2">
-            <label class="block text-[11px] font-bold text-black uppercase tracking-wider">Galerie du projet</label>
-            <ImageUpload
-              model-value=""
-              bucket="project-images"
-              compact
-              :disabled="projectForm.galleryImages.length >= 20 || imageUploadsInProgress > 0"
-              label="Ajouter une image à la galerie"
-              hint="Les images importées seront enregistrées dans la galerie Supabase du projet."
-              @uploading="trackImageUpload"
-              @uploaded="addGalleryImage"
-            />
-            <p v-if="projectForm.galleryImages.length >= 20" class="text-xs text-amber-700">
-              La galerie est limitée à 20 images.
-            </p>
-            <div v-if="projectForm.galleryImages.length" class="space-y-3">
-              <div
-                v-for="(image, index) in projectForm.galleryImages"
-                :key="image.storagePath"
-                class="grid gap-3 rounded-sm border border-neutral-200 p-3 sm:grid-cols-[minmax(0,1fr)_auto]"
               >
-                <ImageUpload
-                  :model-value="image.imageUrl"
-                  bucket="project-images"
-                  compact
-                  preview-size="small"
-                  label="Image de galerie"
-                  :disabled="imageUploadsInProgress > 0"
-                  @uploading="trackImageUpload"
-                  @uploaded="replaceGalleryImage(image.storagePath, $event)"
-                  @delete="removeGalleryImage(image.storagePath)"
-                />
-                <div class="flex items-start gap-1">
-                  <button
-                    type="button"
-                    :disabled="index === 0"
-                    class="rounded-sm border px-2 py-1 text-xs disabled:opacity-40"
-                    :aria-label="`Déplacer l’image ${index + 1} vers le haut`"
-                    @click="moveGalleryImage(index, -1)"
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    :disabled="index === projectForm.galleryImages.length - 1"
-                    class="rounded-sm border px-2 py-1 text-xs disabled:opacity-40"
-                    :aria-label="`Déplacer l’image ${index + 1} vers le bas`"
-                    @click="moveGalleryImage(index, 1)"
-                  >
-                    ↓
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
 
           <div>
-            <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Ordre d’affichage</label>
-            <input
-              v-model.number="projectForm.displayOrder"
-              type="number"
-              min="0"
-              class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
+            <ImageUpload
+              v-model="projectForm.imageUrl"
+              :on-upload-complete="handleCoverUploaded"
+              :on-delete-complete="handleCoverDeleted"
+              :disabled="imageUploadsInProgress > 0 || isSaving"
+              label="Photo principale du projet *"
+              hint="Sélectionnez une image depuis votre ordinateur. Elle est téléversée dans le bucket des réalisations."
+              preview-size="medium"
+              accepted-formats="image/jpeg,image/png,image/webp,image/gif,image/avif"
+              :max-file-size="5"
+              bucket="project-images"
+              @uploading="trackImageUpload"
+            />
+            <p class="mt-1 text-[10px] text-neutral-500">
+              JPG, PNG, WebP, GIF ou AVIF — 5 Mo maximum. Obligatoire à la création; une suppression est possible en modification.
+            </p>
+            <p v-if="coverImageChanged && projectForm.imageStoragePath" class="mt-1 text-[10px] text-neutral-600">
+              La photo est prête; son association sera enregistrée avec la réalisation.
+            </p>
+          </div>
+
+          <div>
+            <label for="project-description" class="mb-1 block text-[11px] font-bold uppercase tracking-wider text-black">
+              Courte description *
+            </label>
+            <textarea
+              id="project-description"
+              v-model="projectForm.description"
+              rows="3"
+              maxlength="5000"
+              required
+              class="w-full rounded-xs border border-neutral-300 bg-white px-3 py-2 text-xs text-black focus:border-black focus:outline-none"
+              placeholder="Décrivez brièvement la réalisation."
             />
           </div>
 
-          <div>
-            <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Courte description *</label>
-            <textarea
-              v-model="projectForm.description"
-              rows="2"
-              required
-              class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
-              placeholder="Résumé des travaux réalisés..."
-            ></textarea>
-          </div>
+          <label class="flex cursor-pointer items-center gap-2 pt-1 text-xs text-neutral-800">
+            <input v-model="projectForm.featured" type="checkbox" class="rounded-none text-black">
+            <span>Mettre en vedette à l’accueil</span>
+          </label>
 
-          <div>
-            <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Détails techniques complets</label>
-            <textarea
-              v-model="projectForm.fullDescription"
-              rows="3"
-              class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
-              placeholder="Détails techniques, structures, postes installés..."
-            ></textarea>
-          </div>
-
-          <div class="flex items-center gap-6 pt-1 text-xs text-neutral-800">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" v-model="projectForm.published" class="rounded-none text-black" />
-              <span>Publié sur le site</span>
-            </label>
-
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" v-model="projectForm.featured" class="rounded-none text-black" />
-              <span>En vedette à l'accueil</span>
-            </label>
-          </div>
-
-          <div class="pt-3 border-t border-neutral-200 flex justify-end gap-2">
+          <div class="flex justify-end gap-2 border-t border-neutral-200 pt-3">
             <button
               type="button"
+              :disabled="isSaving || imageUploadsInProgress > 0"
+              class="rounded-xs px-4 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-600 hover:text-black disabled:opacity-40"
               @click="closeProjectModal"
-              class="px-4 py-2 rounded-xs text-xs font-semibold uppercase tracking-wider text-neutral-600 hover:text-black"
             >
               Annuler
             </button>
             <button
               type="submit"
-              :disabled="imageUploadsInProgress > 0"
-              class="bg-black hover:bg-neutral-800 text-white font-bold px-5 py-2 rounded-xs text-xs uppercase tracking-wider transition-colors"
+              :disabled="isSaving || imageUploadsInProgress > 0"
+              class="rounded-xs bg-black px-5 py-2 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {{ imageUploadsInProgress ? 'Téléversement en cours…' : (isEditing ? 'Enregistrer' : 'Créer le projet') }}
+              {{ isSaving ? 'Enregistrement…' : 'Enregistrer la réalisation' }}
             </button>
           </div>
         </form>
