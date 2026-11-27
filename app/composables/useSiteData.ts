@@ -118,6 +118,9 @@ export interface SiteSettings {
   socialFacebook: string
   socialLinkedin: string
   socialInstagram: string
+  socialFacebookEnabled: boolean
+  socialInstagramEnabled: boolean
+  socialWhatsappEnabled: boolean
   bannerNotice: string
   showNotice: boolean
   aboutHeroTitle: string
@@ -180,6 +183,9 @@ interface DatabaseSettings {
   social_facebook: string | null
   social_linkedin: string | null
   social_instagram: string | null
+  social_facebook_enabled: boolean
+  social_instagram_enabled: boolean
+  social_whatsapp_enabled: boolean
   banner_notice: string | null
   show_notice: boolean
   about_hero_title: string | null
@@ -239,6 +245,9 @@ const emptySettings: SiteSettings = {
   socialFacebook: '',
   socialLinkedin: '',
   socialInstagram: '',
+  socialFacebookEnabled: false,
+  socialInstagramEnabled: false,
+  socialWhatsappEnabled: false,
   bannerNotice: '',
   showNotice: false,
   aboutHeroTitle: '',
@@ -287,6 +296,9 @@ function mapSettings(row: DatabaseSettings | null): SiteSettings {
     socialFacebook: row.social_facebook || '',
     socialLinkedin: row.social_linkedin || '',
     socialInstagram: row.social_instagram || '',
+    socialFacebookEnabled: row.social_facebook_enabled ?? false,
+    socialInstagramEnabled: row.social_instagram_enabled ?? false,
+    socialWhatsappEnabled: row.social_whatsapp_enabled ?? false,
     bannerNotice: row.banner_notice || '',
     showNotice: row.show_notice,
     aboutHeroTitle: row.about_hero_title || '',

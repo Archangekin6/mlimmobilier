@@ -30,5 +30,6 @@ useHead({
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>
+    <AppNotifications />
   </UApp>
 </template>

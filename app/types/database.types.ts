@@ -124,6 +124,9 @@ export type Database = {
           social_facebook: string | null
           social_linkedin: string | null
           social_instagram: string | null
+          social_facebook_enabled: boolean
+          social_instagram_enabled: boolean
+          social_whatsapp_enabled: boolean
           banner_notice: string | null
         } & TimestampColumns & { show_notice: boolean }
         Insert: {
@@ -169,6 +172,9 @@ export type Database = {
           social_facebook?: string | null
           social_linkedin?: string | null
           social_instagram?: string | null
+          social_facebook_enabled?: boolean
+          social_instagram_enabled?: boolean
+          social_whatsapp_enabled?: boolean
           banner_notice?: string | null
           show_notice?: boolean
           created_at?: string
@@ -217,6 +223,9 @@ export type Database = {
           social_facebook?: string | null
           social_linkedin?: string | null
           social_instagram?: string | null
+          social_facebook_enabled?: boolean
+          social_instagram_enabled?: boolean
+          social_whatsapp_enabled?: boolean
           banner_notice?: string | null
           show_notice?: boolean
           created_at?: string

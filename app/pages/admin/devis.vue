@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSiteData, type QuoteRequest } from '~/composables/useSiteData'
+import { useNotifications } from '~/composables/useNotifications'
 
 definePageMeta({
   layout: 'admin'
@@ -9,11 +10,13 @@ definePageMeta({
 
 const route = useRoute()
 const { quotes, updateQuoteStatus, deleteQuote, loadAdminData } = useSiteData()
+const { notify } = useNotifications()
 
 const activeFilter = ref<'all' | 'nouveau' | 'en_cours' | 'devis_envoye' | 'termine' | 'archive'>('all')
 const selectedQuote = ref<QuoteRequest | null>(null)
 const editingNotes = ref('')
 const errorMessage = ref('')
+const deleteQuoteId = ref<string | null>(null)
 const filters = ['all', 'nouveau', 'en_cours', 'devis_envoye', 'termine', 'archive'] as const
 const statuses = ['nouveau', 'en_cours', 'devis_envoye', 'termine', 'archive'] as const
 
@@ -47,9 +50,11 @@ const saveQuoteNotes = async () => {
     try {
       await updateQuoteStatus(selectedQuote.value.id, selectedQuote.value.status, editingNotes.value)
       selectedQuote.value = quotes.value.find(quote => quote.id === selectedQuote.value?.id) || null
+      notify('success', 'Le dossier du client a été mis à jour avec succès.')
     } catch (error) {
       console.error('Erreur d’enregistrement des notes:', error)
       errorMessage.value = 'Impossible d’enregistrer la note.'
+      notify('error', 'Impossible d’enregistrer les informations du dossier. Vous pouvez réessayer.')
     }
   }
 }
@@ -60,22 +65,37 @@ const changeStatus = async (status: QuoteRequest['status']) => {
     try {
       await updateQuoteStatus(id, status, editingNotes.value)
       selectedQuote.value = quotes.value.find(quote => quote.id === id) || null
+      notify('success', 'Le dossier du client a été mis à jour avec succès.')
     } catch (error) {
       console.error('Erreur de mise à jour du statut:', error)
       errorMessage.value = 'Impossible de modifier le statut.'
+      notify('error', 'Impossible de modifier le dossier du client. Vos informations ont été conservées.')
     }
   }
 }
 
 const handleDelete = async (id: string) => {
-  if (confirm('Confirmez-vous la suppression définitive de cette demande ?')) {
-    try {
-      await deleteQuote(id)
-      if (selectedQuote.value?.id === id) selectedQuote.value = null
-    } catch (error) {
-      console.error('Erreur de suppression de la demande:', error)
-      errorMessage.value = 'Impossible de supprimer la demande.'
-    }
+  const quote = quotes.value.find(item => item.id === id)
+  if (!quote || quote.status !== 'archive') {
+    notify('warning', 'Seul un devis archivé peut être supprimé.')
+    return
+  }
+  deleteQuoteId.value = id
+}
+
+const confirmDelete = async () => {
+  if (!deleteQuoteId.value) return
+  const id = deleteQuoteId.value
+  try {
+    await deleteQuote(id)
+    if (selectedQuote.value?.id === id) selectedQuote.value = null
+    deleteQuoteId.value = null
+    notify('success', 'Le devis archivé a été supprimé définitivement.')
+  } catch (error) {
+    console.error('Erreur de suppression de la demande:', error)
+    errorMessage.value = 'Impossible de supprimer la demande.'
+    deleteQuoteId.value = null
+    notify('error', 'Impossible de supprimer la demande. Le dossier a été conservé.')
   }
 }
 
@@ -283,13 +303,30 @@ useSeoMeta({
         </div>
 
         <!-- Delete button -->
-        <div class="pt-3 border-t border-neutral-100 text-right">
+        <div v-if="selectedQuote.status === 'archive'" class="pt-3 border-t border-neutral-100 text-right">
           <button
             type="button"
             @click="handleDelete(selectedQuote.id)"
             class="text-[11px] font-semibold text-neutral-500 hover:text-black uppercase tracking-wider"
           >
             Supprimer cette demande
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="deleteQuoteId" class="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-quote-title">
+      <div class="w-full max-w-md rounded-sm border border-neutral-200 bg-white p-6 shadow-xl">
+        <h3 id="delete-quote-title" class="text-base font-black text-black">Supprimer définitivement ce devis archivé ?</h3>
+        <p class="mt-2 text-xs leading-relaxed text-neutral-600">
+          Cette suppression est définitive. Toutes les informations de ce dossier seront supprimées.
+        </p>
+        <div class="mt-6 flex justify-end gap-2">
+          <button type="button" class="border border-neutral-300 px-4 py-2 text-xs font-bold" @click="deleteQuoteId = null">
+            Annuler
+          </button>
+          <button type="button" class="bg-red-700 px-4 py-2 text-xs font-bold text-white hover:bg-red-800" @click="confirmDelete">
+            Supprimer définitivement
           </button>
         </div>
       </div>

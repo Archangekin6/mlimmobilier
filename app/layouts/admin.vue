@@ -48,9 +48,9 @@ const navItems = [
 </script>
 
 <template>
-  <div class="min-h-screen bg-neutral-50 text-neutral-900 flex flex-col md:flex-row">
+  <div class="min-h-screen md:h-dvh md:overflow-hidden bg-neutral-50 text-neutral-900 flex flex-col md:flex-row">
     <!-- Admin Sidebar: Luminous White & Clean Border -->
-    <aside class="w-full md:w-64 bg-white border-r border-neutral-200 flex flex-col shrink-0">
+    <aside class="w-full md:h-dvh md:w-64 md:sticky md:top-0 bg-white border-r border-neutral-200 flex flex-col shrink-0 md:overflow-hidden">
       <!-- Admin Brand -->
       <div class="h-16 flex items-center justify-between px-5 border-b border-neutral-200">
         <NuxtLink to="/admin" class="flex items-center gap-2.5">
@@ -65,7 +65,7 @@ const navItems = [
       </div>
 
       <!-- Navigation links -->
-      <nav class="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
+      <nav class="flex-1 px-3 py-5 space-y-1 md:min-h-0 md:overflow-y-auto">
         <NuxtLink
           v-for="item in navItems"
           :key="item.to"
@@ -116,7 +116,7 @@ const navItems = [
     </aside>
 
     <!-- Main Content Area -->
-    <div class="flex-1 flex flex-col min-w-0 bg-neutral-50">
+    <div class="flex-1 flex flex-col min-w-0 bg-neutral-50 md:h-dvh md:overflow-hidden">
       <!-- Top header bar: Clean White -->
       <header class="h-16 bg-white border-b border-neutral-200 px-6 sm:px-8 flex items-center justify-between sticky top-0 z-30">
         <div class="flex items-center gap-3">

@@ -1,27 +1,41 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useSiteData } from '~/composables/useSiteData'
+import { useNotifications } from '~/composables/useNotifications'
 
 definePageMeta({
   layout: 'admin'
 })
 
 const { settings, saveSettings } = useSiteData()
+const { notify } = useNotifications()
 
 const form = ref({ ...settings.value })
+watch(settings, (value) => {
+  form.value = { ...value }
+}, { deep: true })
 const savedSuccess = ref(false)
 const savedError = ref('')
 
 const handleSave = () => {
   savedError.value = ''
-  void saveSettings(form.value).then(() => {
+  const normalized = {
+    ...form.value,
+    whatsapp: form.value.whatsapp.replace(/\D/g, ''),
+    socialFacebook: form.value.socialFacebook.trim(),
+    socialInstagram: form.value.socialInstagram.trim()
+  }
+  void saveSettings(normalized).then(() => {
     savedSuccess.value = true
+    form.value = { ...normalized }
+    notify('success', 'Modifications enregistrées et immédiatement appliquées.')
     setTimeout(() => {
       savedSuccess.value = false
     }, 3000)
   }).catch((error: unknown) => {
     console.error('Erreur d’enregistrement des paramètres:', error)
     savedError.value = 'Impossible d’enregistrer les paramètres. Vérifiez la connexion puis réessayez.'
+    notify('error', 'Impossible d’enregistrer les paramètres.')
   })
 }
 
@@ -122,7 +136,7 @@ useSeoMeta({
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
           <div>
             <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">Téléphone Principal 1</label>
             <input
@@ -143,15 +157,6 @@ useSeoMeta({
             />
           </div>
 
-          <div>
-            <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">WhatsApp (sans +)</label>
-            <input
-              v-model="form.whatsapp"
-              type="text"
-              class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none font-mono"
-              placeholder="2250708091011"
-            />
-          </div>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -191,6 +196,10 @@ useSeoMeta({
               class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
               placeholder="https://facebook.com/..."
             />
+            <label class="mt-2 flex items-center gap-2 text-xs text-neutral-700">
+              <input v-model="form.socialFacebookEnabled" type="checkbox" class="accent-black" />
+              Activer Facebook
+            </label>
           </div>
 
           <div>
@@ -211,6 +220,24 @@ useSeoMeta({
               class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none"
               placeholder="https://instagram.com/..."
             />
+            <label class="mt-2 flex items-center gap-2 text-xs text-neutral-700">
+              <input v-model="form.socialInstagramEnabled" type="checkbox" class="accent-black" />
+              Activer Instagram
+            </label>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-bold text-black uppercase tracking-wider mb-1">WhatsApp</label>
+            <input
+              v-model="form.whatsapp"
+              type="tel"
+              class="w-full px-3 py-2 rounded-xs bg-white border border-neutral-300 text-black text-xs focus:border-black focus:outline-none font-mono"
+              placeholder="2250708091011"
+            />
+            <label class="mt-2 flex items-center gap-2 text-xs text-neutral-700">
+              <input v-model="form.socialWhatsappEnabled" type="checkbox" class="accent-black" />
+              Activer WhatsApp
+            </label>
           </div>
         </div>
       </div>

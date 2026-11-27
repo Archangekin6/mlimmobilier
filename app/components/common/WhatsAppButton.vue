@@ -13,7 +13,7 @@ const whatsappLink = computed(() => {
 </script>
 
 <template>
-  <div v-if="whatsappNumber && !route.path.startsWith('/admin')" class="whatsapp-float">
+  <div v-if="settings.socialWhatsappEnabled && whatsappNumber && !route.path.startsWith('/admin')" class="whatsapp-float">
     <a
       :href="whatsappLink"
       target="_blank"

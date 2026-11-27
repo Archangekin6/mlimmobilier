@@ -5,7 +5,13 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id || !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(id)) throw createError({ statusCode: 400, statusMessage: 'Identifiant de demande invalide' })
   const supabase = supabaseAdmin
-  const { data, error } = await supabase.from('quote_requests').delete().eq('id', id).select('id').maybeSingle()
+  const { data, error } = await supabase
+    .from('quote_requests')
+    .delete()
+    .eq('id', id)
+    .eq('status', 'archive')
+    .select('id')
+    .maybeSingle()
   if (error) {
     console.error('Erreur de suppression de la demande de devis:', error.message)
     throw createError({ statusCode: 500, statusMessage: 'Impossible de supprimer la demande' })

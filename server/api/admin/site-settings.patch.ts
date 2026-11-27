@@ -25,6 +25,9 @@ const settingsFields = {
   socialFacebook: 'social_facebook',
   socialLinkedin: 'social_linkedin',
   socialInstagram: 'social_instagram',
+  socialFacebookEnabled: 'social_facebook_enabled',
+  socialInstagramEnabled: 'social_instagram_enabled',
+  socialWhatsappEnabled: 'social_whatsapp_enabled',
   bannerNotice: 'banner_notice',
   showNotice: 'show_notice',
   aboutHeroTitle: 'about_hero_title',
@@ -67,7 +70,7 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 400, statusMessage: `Valeur invalide pour ${field}` })
       }
       update[column] = value
-    } else if (field === 'showNotice') {
+    } else if (field === 'showNotice' || field === 'socialFacebookEnabled' || field === 'socialInstagramEnabled' || field === 'socialWhatsappEnabled') {
       if (typeof value !== 'boolean') {
         throw createError({ statusCode: 400, statusMessage: 'Valeur invalide pour showNotice' })
       }
@@ -76,7 +79,9 @@ export default defineEventHandler(async (event) => {
       if (typeof value === 'string' && !isValidSiteSettingsString(field, value)) {
         throw createError({ statusCode: 400, statusMessage: `Valeur trop longue pour ${field}` })
       }
-      update[column] = typeof value === 'string' ? value.trim() : null
+      update[column] = typeof value === 'string'
+        ? (field === 'whatsapp' ? value.replace(/\D/g, '') : value.trim())
+        : null
     } else {
       throw createError({ statusCode: 400, statusMessage: `Valeur invalide pour ${field}` })
     }
